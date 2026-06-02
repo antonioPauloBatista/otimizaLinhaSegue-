@@ -12,6 +12,18 @@ import datetime
 import pandas as pd
 from influxdb_client import InfluxDBClient
 
+# =====================================================================
+# CONFIGURAÇÃO DE ACESSO AO INFLUXDB (Edite estes valores)
+# =====================================================================
+INFLUX_URL = "http://localhost:8086"          # URL do InfluxDB
+INFLUX_TOKEN = "INSIRA_SEU_TOKEN_DO_INFLUXDB_AQUI"  # Token de acesso do InfluxDB
+INFLUX_ORG = "SUA_ORGANIZACAO_AQUI"           # Organização do InfluxDB
+INFLUX_BUCKET = "Segue"                       # Nome do Bucket no InfluxDB
+START_TIME = "-7d"                            # Intervalo inicial (ex: -7d, -24h)
+STOP_TIME = "now()"                           # Intervalo final (ex: now(), ou data ISO)
+OUTPUT_FILE = "dados_completos_fabrica.csv"   # Nome do arquivo CSV gerado
+# =====================================================================
+
 def parse_time_arg(t_str):
     """
     Converte argumentos de tempo relativos ou absolutos para datetime UTC com fuso horário.
@@ -46,15 +58,26 @@ def parse_time_arg(t_str):
 
 def main():
     parser = argparse.ArgumentParser(description="Busca dados do InfluxDB em blocos de 1 dia e exporta para CSV.")
-    parser.add_argument("--url", default="http://localhost:8086", help="URL do InfluxDB (padrão: http://localhost:8086)")
-    parser.add_argument("--token", required=True, help="Token de autenticação do InfluxDB")
-    parser.add_argument("--org", required=True, help="Organização do InfluxDB")
-    parser.add_argument("--bucket", default="Segue", help="Bucket do InfluxDB (padrão: Segue)")
-    parser.add_argument("--start", default="-7d", help="Início do intervalo de tempo (padrão: -7d)")
-    parser.add_argument("--stop", default="now()", help="Fim do intervalo de tempo (padrão: now())")
-    parser.add_argument("--output", default="dados_completos_fabrica.csv", help="Caminho do CSV de saída (padrão: dados_completos_fabrica.csv)")
+    parser.add_argument("--url", default=INFLUX_URL, help="URL do InfluxDB")
+    parser.add_argument("--token", default=INFLUX_TOKEN, help="Token de autenticação do InfluxDB")
+    parser.add_argument("--org", default=INFLUX_ORG, help="Organização do InfluxDB")
+    parser.add_argument("--bucket", default=INFLUX_BUCKET, help="Bucket do InfluxDB")
+    parser.add_argument("--start", default=START_TIME, help="Início do intervalo de tempo")
+    parser.add_argument("--stop", default=STOP_TIME, help="Fim do intervalo de tempo")
+    parser.add_argument("--output", default=OUTPUT_FILE, help="Caminho do CSV de saída")
 
     args = parser.parse_args()
+
+    # Valida se o usuário preencheu as configurações
+    if args.token == "INSIRA_SEU_TOKEN_DO_INFLUXDB_AQUI" or not args.token:
+        print("❌ Erro: Você precisa configurar o seu INFLUX_TOKEN dentro do script.")
+        print("Abra o arquivo 'obter_dados_influx.py' e edite a variável 'INFLUX_TOKEN'.")
+        sys.exit(1)
+        
+    if args.org == "SUA_ORGANIZACAO_AQUI" or not args.org:
+        print("❌ Erro: Você precisa configurar o seu INFLUX_ORG dentro do script.")
+        print("Abra o arquivo 'obter_dados_influx.py' e edite a variável 'INFLUX_ORG'.")
+        sys.exit(1)
 
     # Parseia datas de início e fim
     try:
@@ -69,7 +92,7 @@ def main():
         sys.exit(1)
 
     # Conecta ao InfluxDB
-    print("➔ Conectando ao InfluxDB...")
+    print(f"➔ Conectando ao InfluxDB em: {args.url}")
     try:
         client = InfluxDBClient(url=args.url, token=args.token, org=args.org)
         query_api = client.query_api()
@@ -149,7 +172,6 @@ from(bucket: "{args.bucket}")
             chunk_df = chunk_df.drop(columns=[col for col in metadados if col in chunk_df.columns], errors="ignore")
 
             if "Timestamp" in chunk_df.columns:
-                # Ordena colunas colocando Timestamp primeiro
                 cols = ["Timestamp"] + [col for col in chunk_df.columns if col != "Timestamp"]
                 chunk_df = chunk_df[cols]
 
@@ -157,7 +179,6 @@ from(bucket: "{args.bucket}")
             if accumulated_df is None:
                 accumulated_df = chunk_df
             else:
-                # pd.concat alinha as colunas por nome e preenche ausências com NaN
                 accumulated_df = pd.concat([accumulated_df, chunk_df], ignore_index=True)
 
             # Remove duplicatas baseadas no Timestamp e ordena cronologicamente

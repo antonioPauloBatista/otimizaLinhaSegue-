@@ -1,6 +1,0 @@
-speed_actual_cph_null_eci_1 = inspetor
-speed_actual_cph_null_filler_1 =  Enchedora
-speed_actual_cph_null_first_downstream_machine_3 =  empacotadora
-speed_actual_cph_null_first_upstream_machine_1 =  Despaletizadora
-speed_actual_cph_null_pasteurizer = Pasteurizador
-speed_actual_cph_null_second_downstream_machine_1 = Paletizadora

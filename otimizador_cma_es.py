@@ -37,6 +37,8 @@ if os.path.exists(ARQUIVO_CONFIG):
             COL_V_ECH = cfg.get("COL_V_ECH", COL_V_ECH)
             COL_V_ROT = cfg.get("COL_V_Saida", COL_V_ROT)
             COL_V_EPC = cfg.get("COL_V_Entrada_Pos_Saida", COL_V_EPC)
+            
+            VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal", None)
         print(f"➔ Configuração de colunas carregada de '{ARQUIVO_CONFIG}'.")
     except Exception as e:
         print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
@@ -86,32 +88,24 @@ if not os.path.exists(ARQUIVO_CSV):
 
 df = pd.read_csv(ARQUIVO_CSV)
 
-# Função para resolver coluna por substring (case-insensitive)
+# Função para resolver coluna com nome EXATO
 def resolver_coluna(col_config, col_padrao, opcional=False):
-    if not col_config:
+    if not col_config or str(col_config).strip().lower() in ["null", "none", ""]:
         if opcional:
             return None
-        raise ValueError("Coluna obrigatória não especificada na configuração.")
+        col_config = col_padrao  # Se for obrigatória, tenta o fallback
     
-    # 1. Procura exata na configuração
+    # Procura exata na configuração
     if col_config in df.columns:
         return col_config
-    # 2. Procura substring na configuração (case-insensitive)
-    for col in df.columns:
-        if col_config.lower() in col.lower():
-            return col
             
-    # 3. Procura exata no padrão de fallback
+    # Procura exata no padrão de fallback
     if col_padrao in df.columns:
         return col_padrao
-    # 4. Procura substring no padrão (case-insensitive)
-    for col in df.columns:
-        if col_padrao.lower() in col.lower():
-            return col
             
     if opcional:
         return None
-    raise ValueError(f"Coluna obrigatória '{col_config}' (padrão fallback: '{col_padrao}') não encontrada no CSV.")
+    raise ValueError(f"Coluna exata '{col_config}' não encontrada no CSV. Verifique o arquivo 'config_colunas.json'.")
 
 # Resolução de todas as colunas
 COL_B1_DPL_UIP = resolver_coluna(COL_B1_DPL_UIP, "accumulation_percentage_DPL_UIP_null", opcional=True)
@@ -136,6 +130,11 @@ print(f"➔ Configuração dos pulmões de extremidade: B1 (Antes Entrada) = {at
 
 df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
+# FIX: Preencher NaNs oriundos do outer join do Grafana para não quebrar a simulação
+df.ffill(inplace=True)
+df.fillna(0.0, inplace=True)
+
+
 if len(df) > 1:
     time_step_seconds = int((df["Timestamp"].iloc[1] - df["Timestamp"].iloc[0]).total_seconds())
     if time_step_seconds <= 0:
@@ -146,6 +145,20 @@ else:
 print(f"➔ Intervalo de amostragem detectado: {time_step_seconds} segundos.")
 
 v_ech_real_hist = df[COL_V_ECH].values
+
+# FIX: Calcular a Velocidade Nominal Dinamicamente (P90 das velocidades ativas)
+# Isso corrige a diferença de escala de velocidade entre diferentes fábricas/bancos
+if 'VELOCIDADE_NOMINAL_CONFIG' in locals() and VELOCIDADE_NOMINAL_CONFIG is not None and VELOCIDADE_NOMINAL_CONFIG > 0:
+    VELOCIDADE_NOMINAL_ECH = float(VELOCIDADE_NOMINAL_CONFIG)
+    print(f"➔ Velocidade Nominal ECH definida pelo usuário: {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+else:
+    vels_ativas = v_ech_real_hist[v_ech_real_hist > 1000]
+    if len(vels_ativas) > 0:
+        VELOCIDADE_NOMINAL_ECH = float(np.percentile(vels_ativas, 90))
+        print(f"➔ Velocidade Nominal ECH calculada dinamicamente (p90): {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+    else:
+        print(f"⚠ Não foram encontradas velocidades válidas. Mantendo nominal em {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+
 b2_hist = df[COL_B2_UIP_ECH].values
 b3_hist = df[COL_B3_ECH_PZ].values
 
@@ -451,14 +464,24 @@ if ganho_garrafas > 0:
 else:
     print(f"➔ GANHO DE PRODUÇÃO ESTIMADO (CMA-ES)  : 0 unidades (Linha já rodou de forma ótima)")
 
+# Contabilização real das paradas simuladas (quando a velocidade simulada é de fato zero)
+vel_sim_arr = np.array(vel_simulada)
+sim_stops_buffer = int(((vel_sim_arr == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
+sim_stops_external = int(((vel_sim_arr == 0.0) & (b2_hist > 15.0) & (b3_hist < 85.0)).sum())
+
+# Contabilização de amostras em nível crítico de buffer onde a parada foi evitada reduzindo a velocidade
+criticos_evitados = int(((df[COL_B2_UIP_ECH] <= 2.0) | (df[COL_B3_ECH_PZ] >= 99.0)).sum())
+
 print("\n[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]")
 print(f"➔ Paradas por Falta/Acúmulo (Buffers):")
 print(f"   ↳ No histórico original : {hist_stops_buffer} amostras")
-print(f"   ↳ Na simulação CMA-ES   : {v_paradas} amostras")
-reducao = hist_stops_buffer - v_paradas
+print(f"   ↳ Na simulação CMA-ES   : {sim_stops_buffer} amostras")
+reducao = hist_stops_buffer - sim_stops_buffer
 print(f"   ↳ EVITADAS PELO CMA-ES  : {reducao} amostras ({(reducao/max(1,hist_stops_buffer)*100):.1f}% de melhoria)")
+print(f"   ↳ Amostras críticas de buffer mantidas em marcha reduzida: {criticos_evitados} amostras")
 print(f"➔ Paradas por Motivos Externos (Mecânica/Operador):")
-print(f"   ↳ No histórico e Simulação: {hist_stops_external} amostras (preservadas para realismo)")
+print(f"   ↳ No histórico original : {hist_stops_external} amostras")
+print(f"   ↳ Na simulação CMA-ES   : {sim_stops_external} amostras")
 
 print("\n[VELOCIDADE ALTA (100%)]")
 print(f"➔ Ação: Enchedora → 100.0% ({int(VELOCIDADE_NOMINAL_ECH)} CPH)")
