@@ -338,7 +338,7 @@ def cma_es(
     historico_scores = []
 
     print(f"\n{'='*60}")
-    print(f"  OTIMIZADOR CMA-ES  |  n={n}  λ={lam}  μ={mu}")
+    print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
     print(f"  σ₀={sigma0}  max_iter={max_iter}")
     print(f"{'='*60}")
 
@@ -406,7 +406,7 @@ def cma_es(
 # =====================================================================
 # 6. EXECUÇÃO DA OTIMIZAÇÃO
 # =====================================================================
-print("\nIniciando Otimização CMA-ES Multivariável...")
+print("\nIniciando Otimização Avançada Multivariável...")
 print("Cruzando velocidades de todas as máquinas com níveis de acúmulo...\n")
 
 # Ponto inicial: centro do espaço de busca
@@ -455,14 +455,14 @@ ganho_percentual = (ganho_garrafas / producao_real_historica * 100) if producao_
 # 7. RELATÓRIO FINAL
 # =====================================================================
 print("\n" + "="*65)
-print("   RELATÓRIO FINAL CMA-ES: CONFIGURAÇÃO OTIMIZADA DA LINHA   ")
+print("   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   ")
 print("="*65)
 print(f"➔ Produção Real Registrada no Histórico: {int(producao_real_historica)} unidades.")
-print(f"➔ Produção Simulada Otimizada (CMA-ES) : {int(v_prod)} unidades.")
+print(f"➔ Produção Simulada Otimizada : {int(v_prod)} unidades.")
 if ganho_garrafas > 0:
-    print(f"➔ GANHO DE PRODUÇÃO ESTIMADO (CMA-ES)  : +{int(ganho_garrafas)} unidades (+{ganho_percentual:.2f}%)")
+    print(f"➔ GANHO DE PRODUÇÃO ESTIMADO  : +{int(ganho_garrafas)} unidades (+{ganho_percentual:.2f}%)")
 else:
-    print(f"➔ GANHO DE PRODUÇÃO ESTIMADO (CMA-ES)  : 0 unidades (Linha já rodou de forma ótima)")
+    print(f"➔ GANHO DE PRODUÇÃO ESTIMADO  : 0 unidades (Linha já rodou de forma ótima)")
 
 # Contabilização real das paradas simuladas (quando a velocidade simulada é de fato zero)
 vel_sim_arr = np.array(vel_simulada)
@@ -475,13 +475,13 @@ criticos_evitados = int(((df[COL_B2_UIP_ECH] <= 2.0) | (df[COL_B3_ECH_PZ] >= 99.
 print("\n[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]")
 print(f"➔ Paradas por Falta/Acúmulo (Buffers):")
 print(f"   ↳ No histórico original : {hist_stops_buffer} amostras")
-print(f"   ↳ Na simulação CMA-ES   : {sim_stops_buffer} amostras")
+print(f"   ↳ Na simulação Otimizada : {sim_stops_buffer} amostras")
 reducao = hist_stops_buffer - sim_stops_buffer
-print(f"   ↳ EVITADAS PELO CMA-ES  : {reducao} amostras ({(reducao/max(1,hist_stops_buffer)*100):.1f}% de melhoria)")
+print(f"   ↳ EVITADAS PELO OTIMIZADOR  : {reducao} amostras ({(reducao/max(1,hist_stops_buffer)*100):.1f}% de melhoria)")
 print(f"   ↳ Amostras críticas de buffer mantidas em marcha reduzida: {criticos_evitados} amostras")
 print(f"➔ Paradas por Motivos Externos (Mecânica/Operador):")
 print(f"   ↳ No histórico original : {hist_stops_external} amostras")
-print(f"   ↳ Na simulação CMA-ES   : {sim_stops_external} amostras")
+print(f"   ↳ Na simulação Otimizada : {sim_stops_external} amostras")
 
 print("\n[VELOCIDADE ALTA (100%)]")
 print(f"➔ Ação: Enchedora → 100.0% ({int(VELOCIDADE_NOMINAL_ECH)} CPH)")
@@ -527,43 +527,60 @@ if SALVAR_CSV_COMPARATIVO:
     df_comparado = pd.DataFrame({
         "Timestamp":                  df["Timestamp"],
         "Velocidade_Real_Enchedora":  df[COL_V_ECH],
-        "Velocidade_Simulada_CMA_ES": vel_simulada,
+        "Velocidade_Simulada_Otimizada": vel_simulada,
         "Buffer_B2_UIP_ECH":          df[COL_B2_UIP_ECH],
         "Buffer_B3_ECH_PZ":           df[COL_B3_ECH_PZ]
     })
-    df_comparado.to_csv("dados_projetados_cma_es.csv", index=False)
-    print("\n➔ CSV comparativo salvo em 'dados_projetados_cma_es.csv'.")
+    df_comparado.to_csv("dados_projetados_otimizado.csv", index=False)
+    print("\n➔ CSV comparativo salvo em 'dados_projetados_otimizado.csv'.")
 
 if GERAR_GRAFICO_PLOTS:
     try:
         import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(2, 1, figsize=(15, 10))
-
-        # --- Painel 1: Comparação de velocidades ---
+        # --- Prepara os dados para o gráfico ---
         df_plot = pd.DataFrame({
             "Timestamp": df["Timestamp"],
             "Real":      df[COL_V_ECH],
-            "CMA_ES":    vel_simulada
+            "Otimizado": vel_simulada
         }).set_index("Timestamp")
         df_smooth = df_plot.resample("15Min").mean().reset_index()
 
-        axes[0].plot(df_smooth["Timestamp"], df_smooth["Real"],   label="Velocidade Real (15m)",    color="#E74C3C", alpha=0.7, linewidth=2)
-        axes[0].plot(df_smooth["Timestamp"], df_smooth["CMA_ES"], label="Velocidade CMA-ES (15m)",  color="#27AE60", alpha=0.9, linewidth=2)
-        axes[0].set_title("Comparação de Velocidades da Enchedora (Média 15 min)", fontsize=13, fontweight="bold")
-        axes[0].set_ylabel("Velocidade (CPH)")
-        axes[0].legend()
-        axes[0].grid(True, linestyle="--", alpha=0.4)
+        # Extrai os dias únicos para separar os gráficos
+        df_smooth['Date'] = df_smooth['Timestamp'].dt.date
+        dias_unicos = df_smooth['Date'].unique()
+        
+        print("\n➔ Gerando gráficos detalhados dia a dia...")
 
-        # --- Painel 2: Convergência do CMA-ES ---
-        axes[1].plot(historico, color="#2980B9", linewidth=1.5)
-        axes[1].set_title("Curva de Convergência do CMA-ES", fontsize=13, fontweight="bold")
-        axes[1].set_xlabel("Geração")
-        axes[1].set_ylabel("Melhor Score (fitness)")
-        axes[1].grid(True, linestyle="--", alpha=0.4)
+        # Gera e salva um gráfico para cada dia
+        for dia in dias_unicos:
+            df_dia = df_smooth[df_smooth['Date'] == dia]
+            
+            # Pula dias que podem ter ficado sem dados após o resample
+            if df_dia.empty:
+                continue
 
-        plt.tight_layout()
-        plt.savefig("comparacao_velocidades_cma_es.png", dpi=150)
-        print("➔ Gráfico salvo em 'comparacao_velocidades_cma_es.png'.")
+            fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+
+            # --- Painel 1: Comparação de velocidades (Focado no Dia) ---
+            axes[0].plot(df_dia["Timestamp"], df_dia["Real"],   label="Velocidade Real (15m)",    color="#E74C3C", alpha=0.7, linewidth=2)
+            axes[0].plot(df_dia["Timestamp"], df_dia["Otimizado"], label="Velocidade Otimizada (15m)",  color="#27AE60", alpha=0.9, linewidth=2)
+            axes[0].set_title(f"Comparação de Velocidades da Enchedora (Dia: {dia})", fontsize=13, fontweight="bold")
+            axes[0].set_ylabel("Velocidade (CPH)")
+            axes[0].legend()
+            axes[0].grid(True, linestyle="--", alpha=0.4)
+
+            # --- Painel 2: Convergência do Otimizador ---
+            axes[1].plot(historico, color="#2980B9", linewidth=1.5)
+            axes[1].set_title("Curva de Evolução do Otimizador", fontsize=13, fontweight="bold")
+            axes[1].set_xlabel("Geração")
+            axes[1].set_ylabel("Melhor Score (fitness)")
+            axes[1].grid(True, linestyle="--", alpha=0.4)
+
+            plt.tight_layout()
+            nome_arquivo = f"comparacao_velocidades_otimizado_{dia}.png"
+            plt.savefig(nome_arquivo, dpi=150)
+            plt.close(fig) # Fecha a figura para não consumir RAM acumulada
+            print(f"   ↳ Salvo: {nome_arquivo}")
     except Exception as e:
         print(f"⚠️ Erro ao gerar gráfico: {e}")
