@@ -40,6 +40,7 @@ if os.path.exists(ARQUIVO_CONFIG):
             COL_V_EPC = cfg.get("COL_V_Entrada_Pos_Saida", COL_V_EPC)
             
             VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal", None)
+            FILTRO_MINUTOS_PARADA_LONGA_CONFIG = cfg.get("Filtro_Minutos_Parada_Longa", None)
         print(f"➔ Configuração de colunas carregada de '{ARQUIVO_CONFIG}'.")
     except Exception as e:
         print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
@@ -47,6 +48,7 @@ if os.path.exists(ARQUIVO_CONFIG):
 
 # Parâmetros Físicos Nominais da Fábrica
 VELOCIDADE_NOMINAL_ECH = 52700.0  # CPH Máximo da Enchedora
+FILTRO_MINUTOS_PARADA_LONGA = 10  # Tempo máximo (min) antes de considerar parada inegociável
 CAPACIDADE_ESTEIRAS_INTERNAS = 500  # Capacidade estimada em garrafas (B2 e B3)
 CAPACIDADE_ESTEIRAS_EXTREMAS = 1000 # Capacidade estimada em garrafas (B1 e B4)
 
@@ -166,6 +168,9 @@ else:
     else:
         print(f"⚠ Não foram encontradas velocidades válidas. Mantendo nominal em {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
 
+if 'FILTRO_MINUTOS_PARADA_LONGA_CONFIG' in locals() and FILTRO_MINUTOS_PARADA_LONGA_CONFIG is not None:
+    FILTRO_MINUTOS_PARADA_LONGA = int(FILTRO_MINUTOS_PARADA_LONGA_CONFIG)
+
 
 b2_hist = df[COL_B2_UIP_ECH].values
 b3_hist = df[COL_B3_ECH_PZ].values
@@ -174,10 +179,31 @@ hist_stops_total = int((v_ech_real_hist == 0.0).sum())
 hist_stops_buffer = int(((v_ech_real_hist == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
 hist_stops_external = hist_stops_total - hist_stops_buffer
 
+# FIX: Identificar paradas externas longas inegociáveis (> FILTRO_MINUTOS_PARADA_LONGA)
+limite_amostras_parada = int((FILTRO_MINUTOS_PARADA_LONGA * 60) / time_step_seconds)
+is_zero = (v_ech_real_hist == 0.0)
+mascara_parada_longa = np.zeros(len(df), dtype=bool)
+contador_parada = 0
+inicio_parada = -1
+
+for i in range(len(df)):
+    if is_zero[i]:
+        if contador_parada == 0:
+            inicio_parada = i
+        contador_parada += 1
+    else:
+        if contador_parada > limite_amostras_parada:
+            mascara_parada_longa[inicio_parada:i] = True
+        contador_parada = 0
+if contador_parada > limite_amostras_parada:
+    mascara_parada_longa[inicio_parada:] = True
+
+print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amostras_parada} amostras). {mascara_parada_longa.sum()} amostras marcadas como inegociáveis.")
+
 # =====================================================================
 # 3. MOTOR DO GÊMEO DIGITAL (Simula o passado com as novas regras da IA)
 # =====================================================================
-def simular_historico_com_regras_ia(dados_df, p, time_step, retornar_series=False):
+def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, retornar_series=False):
     """
     Roda o histórico aplicando os parâmetros dinâmicos 'p' gerados pela IA
     e calcula a eficiência matemática final daquele cenário com base na lógica de histerese.
@@ -245,7 +271,10 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, retornar_series=Fals
             b1_ativo = False
 
         # Condição Física Real do histórico: Se o cano entupiu de verdade, a enchedora parou
-        if b2[i] <= 2.0 or b3[i] >= 99.0:
+        if mascara_parada[i]:
+            fator_velocidade = 0.0
+            paradas_externas_ocorridas += 1
+        elif b2[i] <= 2.0 or b3[i] >= 99.0:
             fator_velocidade = 0.0
             paradas_soco_reais_ocorridas += 1
         elif v_ech_real[i] == 0.0 and b2[i] > 15.0 and b3[i] < 85.0:
@@ -326,7 +355,7 @@ for geracao in range(1000):
     }
     
     # Roda a simulação matemática baseada nas velocidades do seu CSV
-    score, prod, paradas_criticas, paradas_ext, paradas_salvas = simular_historico_com_regras_ia(df, proposta_ia, time_step_seconds)
+    score, prod, paradas_criticas, paradas_ext, paradas_salvas = simular_historico_com_regras_ia(df, proposta_ia, time_step_seconds, mascara_parada_longa)
     
     # Seleção natural: guarda apenas a combinação mais eficiente de todas
     if score > melhor_score:
@@ -339,7 +368,7 @@ for geracao in range(1000):
 
 # Roda a simulação final coletando a série temporal das velocidades simuladas
 _, _, _, _, _, vel_simulada = simular_historico_com_regras_ia(
-    df, melhores_parametros, time_step_seconds, retornar_series=True
+    df, melhores_parametros, time_step_seconds, mascara_parada_longa, retornar_series=True
 )
 
 # Calcula a produção real contida no histórico original para comparação
