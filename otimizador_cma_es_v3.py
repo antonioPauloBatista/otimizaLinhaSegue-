@@ -46,8 +46,8 @@ if os.path.exists(ARQUIVO_CONFIG):
 
 VELOCIDADE_NOMINAL_ECH = 52700.0
 FILTRO_MINUTOS_PARADA_LONGA = 10
-CAPACIDADE_ESTEIRAS_INTERNAS = 500
-CAPACIDADE_ESTEIRAS_EXTREMAS = 1000
+CAPACIDADE_ESTEIRAS_INTERNAS = 500   # fallback — será auto-calibrado
+CAPACIDADE_ESTEIRAS_EXTREMAS = 1000  # fallback — será auto-calibrado
 
 SALVAR_CSV_COMPARATIVO = True
 GERAR_GRAFICO_PLOTS    = True
@@ -158,6 +158,7 @@ else:
     if len(vels_ativas) > 0:
         VELOCIDADE_NOMINAL_ECH = float(np.percentile(vels_ativas, 90))
         print(f"➔ Velocidade Nominal ECH calculada dinamicamente (p90): {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+    else:
         print(f"⚠ Não foram encontradas velocidades válidas. Mantendo nominal em {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
 
 if 'FILTRO_MINUTOS_PARADA_LONGA_CONFIG' in locals() and FILTRO_MINUTOS_PARADA_LONGA_CONFIG is not None:
@@ -191,6 +192,66 @@ if contador_parada > limite_amostras_parada:
 
 print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amostras_parada} amostras). {mascara_parada_longa.sum()} amostras marcadas como inegociáveis.")
 
+# V3: AUTO-CALIBRAÇÃO DA CAPACIDADE DOS BUFFERS
+# Estima a capacidade real (em garrafas) a partir dos dados históricos.
+# Fórmula: capacidade = (v_in - v_out) / 3600 * dt / (delta_buffer_pct / 100)
+# Usa a mediana das estimativas válidas para robustez contra outliers.
+def _calibrar_capacidade(v_in, v_out, buffer_pct, ts):
+    """Estima capacidade em garrafas a partir de amostras consecutivas."""
+    delta_b = np.diff(buffer_pct)              # variação de % entre amostras
+    fluxo   = (v_in[:-1] - v_out[:-1]) / 3600.0 * ts  # garrafas líquidas por amostra
+    # Filtra amostras válidas: ambas as máquinas rodando, variação não nula
+    validos = (np.abs(delta_b) > 0.05) & (np.abs(fluxo) > 0.1) & (v_in[:-1] > 1000) & (v_out[:-1] > 1000)
+    if validos.sum() < 50:
+        return None  # dados insuficientes
+    caps = np.abs(fluxo[validos] / (delta_b[validos] / 100.0))
+    # Remove outliers extremos (< p5 ou > p95)
+    p5, p95 = np.percentile(caps, [5, 95])
+    caps_filtrado = caps[(caps >= p5) & (caps <= p95)]
+    if len(caps_filtrado) < 10:
+        return None
+    return float(np.median(caps_filtrado))
+
+v_uip_cal = df[COL_V_UIP].values
+v_ech_cal = df[COL_V_ECH].values
+v_rot_cal = df[COL_V_ROT].values
+
+# B2: UIP → ECH
+cap_b2_est = _calibrar_capacidade(v_uip_cal, v_ech_cal, b2_hist, time_step_seconds)
+if cap_b2_est is not None and cap_b2_est > 10:
+    CAPACIDADE_ESTEIRAS_INTERNAS = int(cap_b2_est)
+    print(f"➔ [V3] Capacidade B2 auto-calibrada: {CAPACIDADE_ESTEIRAS_INTERNAS} garrafas (mediana histórica)")
+else:
+    print(f"➔ [V3] Capacidade B2: usando fallback {CAPACIDADE_ESTEIRAS_INTERNAS} garrafas")
+
+# B3: ECH → PZ (usa mesma capacidade interna se calibração falhar)
+cap_b3_est = _calibrar_capacidade(v_ech_cal, v_rot_cal, b3_hist, time_step_seconds)
+CAP_B3_CALIBRADA = CAPACIDADE_ESTEIRAS_INTERNAS  # default = mesma do B2
+if cap_b3_est is not None and cap_b3_est > 10:
+    CAP_B3_CALIBRADA = int(cap_b3_est)
+    print(f"➔ [V3] Capacidade B3 auto-calibrada: {CAP_B3_CALIBRADA} garrafas")
+else:
+    print(f"➔ [V3] Capacidade B3: usando fallback {CAP_B3_CALIBRADA} garrafas")
+
+# Extremos (B1/B4): calibra se dados disponíveis
+CAP_B1_CALIBRADA = CAPACIDADE_ESTEIRAS_EXTREMAS
+CAP_B4_CALIBRADA = CAPACIDADE_ESTEIRAS_EXTREMAS
+if HAS_B1 and HAS_V_DPL:
+    b1_cal = df[COL_B1_DPL_UIP].values
+    v_dpl_cal = df[COL_V_DPL].values
+    cap_b1_est = _calibrar_capacidade(v_dpl_cal, v_uip_cal, b1_cal, time_step_seconds)
+    if cap_b1_est is not None and cap_b1_est > 10:
+        CAP_B1_CALIBRADA = int(cap_b1_est)
+        print(f"➔ [V3] Capacidade B1 auto-calibrada: {CAP_B1_CALIBRADA} garrafas")
+
+if HAS_B4 and HAS_V_EPC:
+    b4_cal = df[COL_B4_PZ_EPC].values
+    v_epc_cal = df[COL_V_EPC].values
+    cap_b4_est = _calibrar_capacidade(v_rot_cal, v_epc_cal, b4_cal, time_step_seconds)
+    if cap_b4_est is not None and cap_b4_est > 10:
+        CAP_B4_CALIBRADA = int(cap_b4_est)
+        print(f"➔ [V3] Capacidade B4 auto-calibrada: {CAP_B4_CALIBRADA} garrafas")
+
 # =====================================================================
 # 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS
 # =====================================================================
@@ -212,101 +273,151 @@ def vetor_para_params(x):
     }
 
 # =====================================================================
-# 4. MOTOR DO GÊMEO DIGITAL
+# 4. MOTOR DO GÊMEO DIGITAL — V3: FÍSICA DINÂMICA DE BUFFERS
 # =====================================================================
-def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, retornar_series=False):
-    b2 = dados_df[COL_B2_UIP_ECH].values
-    b3 = dados_df[COL_B3_ECH_PZ].values
-    v_rot     = dados_df[COL_V_ROT].values
-    v_ech_real = dados_df[COL_V_ECH].values
-    
-    b1 = dados_df[COL_B1_DPL_UIP].values if HAS_B1 else None
-    v_dpl = dados_df[COL_V_DPL].values if HAS_V_DPL else None
-    
-    b4 = dados_df[COL_B4_PZ_EPC].values if HAS_B4 else None
-    v_epc = dados_df[COL_V_EPC].values if HAS_V_EPC else None
+# Diferença fundamental vs V1/V2:
+#   V1/V2 leem os níveis de buffer diretamente do histórico (estáticos).
+#   V3 SIMULA os buffers dinamicamente: quando a enchedora desacelera,
+#   o buffer de entrada enche e o de saída esvazia — capturando o efeito
+#   preventivo real de uma redução de velocidade.
+#
+# Modelo físico por buffer:
+#   delta_garrafas = (v_entrada - v_saida) / 3600 * time_step
+#   delta_percent  = delta_garrafas / capacidade_garrafas * 100
 
-    producao_total_simulada   = 0.0
-    paradas_soco_evitadas     = 0
+def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, retornar_series=False):
+    """V3: Simulação com buffers dinâmicos que respondem à velocidade simulada."""
+
+    # --- Velocidades históricas das máquinas NÃO controladas ---
+    v_uip_hist  = dados_df[COL_V_UIP].values
+    v_rot_hist  = dados_df[COL_V_ROT].values
+    v_ech_real  = dados_df[COL_V_ECH].values
+    v_dpl_hist  = dados_df[COL_V_DPL].values if HAS_V_DPL else None
+    v_epc_hist  = dados_df[COL_V_EPC].values if HAS_V_EPC else None
+
+    # Dados históricos de buffer (para classificar paradas externas)
+    b2_hist_vals = dados_df[COL_B2_UIP_ECH].values
+    b3_hist_vals = dados_df[COL_B3_ECH_PZ].values
+
+    # --- Níveis iniciais dos buffers dinâmicos (do 1º ponto histórico) ---
+    b2_dyn = float(b2_hist_vals[0])
+    b3_dyn = float(b3_hist_vals[0])
+    b1_dyn = float(dados_df[COL_B1_DPL_UIP].values[0]) if HAS_B1 else 50.0
+    b4_dyn = float(dados_df[COL_B4_PZ_EPC].values[0]) if HAS_B4 else 50.0
+
+    cap_b2 = float(CAPACIDADE_ESTEIRAS_INTERNAS)  # auto-calibrado
+    cap_b3 = float(CAP_B3_CALIBRADA)              # auto-calibrado
+    cap_b1 = float(CAP_B1_CALIBRADA)              # auto-calibrado
+    cap_b4 = float(CAP_B4_CALIBRADA)              # auto-calibrado
+
+    # --- Contadores ---
+    producao_total_simulada      = 0.0
+    paradas_soco_evitadas        = 0
     paradas_soco_reais_ocorridas = 0
     paradas_externas_ocorridas   = 0
-    mudancas_velocidade       = 0
-    ultima_velocidade_fator   = 1.0
+    mudancas_velocidade          = 0
+    ultima_velocidade_fator      = 1.0
 
     b1_ativo = b2_ativo = b3_ativo = b4_ativo = False
     velocidades_simuladas = []
+    n = len(dados_df)
 
-    for i in range(len(dados_df)):
-        if b2[i] <= p["gatilho_b2_falta_critica"]:
+    for i in range(n):
+        # ── 1) Histerese baseada nos BUFFERS DINÂMICOS ──
+        if b2_dyn <= p["gatilho_b2_falta_critica"]:
             b2_ativo = True
-        elif b2[i] > p["gatilho_b2_falta_critica"] + 10.0:
+        elif b2_dyn > p["gatilho_b2_falta_critica"] + 10.0:
             b2_ativo = False
 
-        if b3[i] >= p["gatilho_b3_acumulo_critico"]:
+        if b3_dyn >= p["gatilho_b3_acumulo_critico"]:
             b3_ativo = True
-        elif b3[i] < p["gatilho_b3_acumulo_critico"] - 10.0:
+        elif b3_dyn < p["gatilho_b3_acumulo_critico"] - 10.0:
             b3_ativo = False
 
-        if HAS_B4 and b4 is not None:
-            if b4[i] >= p["gatilho_b4_acumulo_extremo"]:
+        if HAS_B4:
+            if b4_dyn >= p["gatilho_b4_acumulo_extremo"]:
                 b4_ativo = True
-            elif b4[i] < p["gatilho_b4_acumulo_extremo"] - 15.0:
+            elif b4_dyn < p["gatilho_b4_acumulo_extremo"] - 15.0:
                 b4_ativo = False
-        else:
-            b4_ativo = False
 
-        if HAS_B1 and b1 is not None:
-            if b1[i] <= p["gatilho_b1_falta_extrema"]:
+        if HAS_B1:
+            if b1_dyn <= p["gatilho_b1_falta_extrema"]:
                 b1_ativo = True
-            elif b1[i] > p["gatilho_b1_falta_extrema"] + 10.0:
+            elif b1_dyn > p["gatilho_b1_falta_extrema"] + 10.0:
                 b1_ativo = False
-        else:
-            b1_ativo = False
 
+        # ── 2) Determina velocidade da enchedora ──
         if mascara_parada[i]:
-            # Parada externa inegociável (quebra mecânica longa)
+            # Parada externa longa inegociável
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
-        elif b2[i] <= 2.0 or b3[i] >= 99.0:
-            # Parada de buffer crítico no histórico: otimizador pode evitá-la
-            # convertendo-a em produção a velocidade reduzida (ganho real).
-            fator_reduzido = 1.0
-            if b2_ativo:
-                fator_reduzido = p["vel_ech_falta_critica"] / 100.0
-            elif b3_ativo:
-                fator_reduzido = p["vel_ech_acumulo_critico"] / 100.0
-            else:
-                fator_reduzido = 0.7  # redução conservadora padrão
-            fator_velocidade = fator_reduzido
-            paradas_soco_reais_ocorridas += 1  # ainda conta como parada evitada (para penalidade)
-        elif v_ech_real[i] == 0.0:
-            # Parada externa (mecânica/operador): preservada integralmente
+        elif v_ech_real[i] == 0.0 and b2_hist_vals[i] > 15.0 and b3_hist_vals[i] < 85.0:
+            # Parada externa curta (não causada por buffer) — preserva
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
+        elif b2_dyn <= 0.5 or b3_dyn >= 99.5:
+            # Buffer dinâmico zerou/estourou → parada forçada
+            fator_velocidade = 0.0
+            paradas_soco_reais_ocorridas += 1
         else:
-            # Máquina rodando: preserva SEMPRE a velocidade real histórica.
-            # O simulador não reduz a velocidade durante períodos de marcha porque
-            # os dados históricos são fixos — reduzir aqui apenas tira produção
-            # sem capturar o efeito real de estabilização do buffer.
-            # O ganho real do otimizador vem de EVITAR paradas (bloco acima),
-            # não de reduzir velocidade em períodos que já estavam rodando.
-            fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
-
-            # Conta paradas de soco proativas (momento em que o buffer extremo
-            # teria causado parada breve, mas o operador/CLP teria desacelerado):
-            if HAS_B4 and b4_ativo and v_rot[i] < VELOCIDADE_NOMINAL_ECH:
-                paradas_soco_evitadas += 1
-            elif HAS_B1 and HAS_V_DPL and b1_ativo and v_dpl[i] < VELOCIDADE_NOMINAL_ECH:
+            # Máquina pode rodar — velocidade definida pelo controlador
+            if v_ech_real[i] > 0:
+                fator_base = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
+            else:
+                # Parada histórica por buffer que a V3 PREVENIU → roda nominal
+                fator_base = 1.0
                 paradas_soco_evitadas += 1
 
-        cph_calculado = VELOCIDADE_NOMINAL_ECH * fator_velocidade
-        producao_total_simulada += (cph_calculado / 3600.0) * time_step
+            fator_velocidade = fator_base
+
+            # Aplica regras de redução com base nos buffers DINÂMICOS
+            if HAS_B1 and b1_ativo:
+                fator_velocidade = min(fator_base, p["vel_ech_falta_extrema"] / 100.0)
+            elif b2_ativo:
+                fator_velocidade = min(fator_base, p["vel_ech_falta_critica"] / 100.0)
+            elif b3_ativo:
+                fator_velocidade = min(fator_base, p["vel_ech_acumulo_critico"] / 100.0)
+            elif HAS_B4 and b4_ativo:
+                fator_velocidade = min(fator_base, p["vel_ech_acumulo_extremo"] / 100.0)
+
+        # ── 3) Calcula produção ──
+        v_ech_sim = VELOCIDADE_NOMINAL_ECH * fator_velocidade
+        producao_total_simulada += (v_ech_sim / 3600.0) * time_step
         if retornar_series:
-            velocidades_simuladas.append(cph_calculado)
+            velocidades_simuladas.append(v_ech_sim)
 
         if fator_velocidade != ultima_velocidade_fator:
             mudancas_velocidade += 1
             ultima_velocidade_fator = fator_velocidade
+
+        # ── 4) FÍSICA DOS BUFFERS — atualiza níveis dinâmicos ──
+        # Se as máquinas adjacentes estavam paradas no histórico por causa de buffer,
+        # mas na NOSSA simulação o buffer está ok, elas estariam rodando!
+        v_uip_sim = v_uip_hist[i]
+        if v_uip_sim == 0.0 and b2_hist_vals[i] >= 85.0 and b2_dyn < 95.0:
+            v_uip_sim = VELOCIDADE_NOMINAL_ECH
+
+        v_rot_sim = v_rot_hist[i]
+        if v_rot_sim == 0.0 and b3_hist_vals[i] <= 15.0 and b3_dyn > 5.0:
+            v_rot_sim = VELOCIDADE_NOMINAL_ECH
+
+        # B2 (UIP → ECH): alimentado pela UIP SIMULADA, drenado pela enchedora SIMULADA
+        delta_b2 = ((v_uip_sim - v_ech_sim) / 3600.0 * time_step) / cap_b2 * 100.0
+        b2_dyn = max(0.0, min(100.0, b2_dyn + delta_b2))
+
+        # B3 (ECH → PZ): alimentado pela enchedora SIMULADA, drenado pela rotuladora SIMULADA
+        delta_b3 = ((v_ech_sim - v_rot_sim) / 3600.0 * time_step) / cap_b3 * 100.0
+        b3_dyn = max(0.0, min(100.0, b3_dyn + delta_b3))
+
+        # B1 (DPL → UIP): não controlado, mas rastreado dinamicamente
+        if HAS_B1 and HAS_V_DPL:
+            delta_b1 = ((v_dpl_hist[i] - v_uip_hist[i]) / 3600.0 * time_step) / cap_b1 * 100.0
+            b1_dyn = max(0.0, min(100.0, b1_dyn + delta_b1))
+
+        # B4 (PZ → EPC): não controlado, mas rastreado dinamicamente
+        if HAS_B4 and HAS_V_EPC:
+            delta_b4 = ((v_rot_hist[i] - v_epc_hist[i]) / 3600.0 * time_step) / cap_b4 * 100.0
+            b4_dyn = max(0.0, min(100.0, b4_dyn + delta_b4))
 
     score_fitness = producao_total_simulada - (paradas_soco_reais_ocorridas * 150) - (mudancas_velocidade * 0.25)
 
@@ -365,6 +476,8 @@ def cma_es(
     melhor_score  = -np.inf
     melhor_x      = xmean.copy()
     historico_scores = []
+    gen_sem_melhoria = 0       # V3: early stopping
+    PACIENCIA = 100            # para se não melhorar em 100 gerações
 
     print(f"\n{'='*60}")
     print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
@@ -382,10 +495,13 @@ def cma_es(
         # --- Ordenação: do melhor ao pior ---
         idx = np.argsort(fitness)[::-1]   # decrescente (maximização)
 
-        # Atualiza melhor global
-        if fitness[idx[0]] > melhor_score:
+        # Atualiza melhor global (melhoria mínima de 1.0 para contar)
+        if fitness[idx[0]] > melhor_score + 1.0:
             melhor_score = fitness[idx[0]]
             melhor_x     = arx[idx[0]].copy()
+            gen_sem_melhoria = 0
+        else:
+            gen_sem_melhoria += 1
 
         historico_scores.append(melhor_score)
 
@@ -425,49 +541,62 @@ def cma_es(
             D    = np.sqrt(np.maximum(D, 1e-20))
             invsqrtC = B @ np.diag(1.0 / D) @ B.T
 
-        # --- Critério de convergência ---
+        # --- Critérios de convergência ---
         if sigma < tol:
-            print(f"\n  ✔ Convergência atingida na geração {gen} (σ={sigma:.2e})")
+            print(f"\n  ✔ Convergência por σ na geração {gen} (σ={sigma:.2e})")
+            break
+        if gen_sem_melhoria >= PACIENCIA:
+            print(f"\n  ✔ Early stop: sem melhoria há {PACIENCIA} gerações (geração {gen})")
             break
 
     return melhor_x, melhor_score, historico_scores
 
 # =====================================================================
-# 6. EXECUÇÃO DA OTIMIZAÇÃO
+# 6. EXECUÇÃO DA OTIMIZAÇÃO  [V3: buffers dinâmicos + multi-seed]
 # =====================================================================
-print("\nIniciando Otimização Avançada Multivariável...")
-print("Cruzando velocidades de todas as máquinas com níveis de acúmulo...\n")
+print("\nIniciando Otimização Avançada Multivariável (V3)...")
+print("V3: física dinâmica de buffers | 1000 gerações (max) | 3 seeds | early stop\n")
 
-# Ponto inicial: centro do espaço de busca
-x0 = (BOUNDS_LO + BOUNDS_HI) / 2.0
-
-# Sigma inicial: 1/4 da amplitude de cada dimensão (em escala normalizada)
-# Como as escalas das variáveis são similares (~10–20%), sigma0=2.0 é razoável
+x0     = (BOUNDS_LO + BOUNDS_HI) / 2.0
 sigma0 = 2.0
 
 def objetivo(x):
     """Wrapper: recebe vetor, converte, simula e retorna score (a maximizar)."""
     p = vetor_para_params(x)
     score, _, _, _, _ = simular_historico_com_regras_ia(df, p, time_step_seconds, mascara_parada_longa)
-    
-    # Penalidade quadrática para incentivar o otimizador a permanecer nos limites
     penalidade = 0.0
     for i in range(len(x)):
         if x[i] < BOUNDS_LO[i]:
             penalidade += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
         elif x[i] > BOUNDS_HI[i]:
             penalidade += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
-            
     return score - penalidade
 
-melhor_x, melhor_score_cma, historico = cma_es(
-    func     = objetivo,
-    x0       = x0,
-    sigma0   = sigma0,
-    max_iter = 500,
-    tol      = 1e-8,
-    seed     = 42
-)
+# --- Multi-seed: 3 corridas independentes, pega o melhor resultado global ---
+SEEDS = [42, 123, 777]
+melhor_x          = None
+melhor_score_cma  = -np.inf
+historico         = []
+
+for seed_atual in SEEDS:
+    print(f"\n>>> Rodada seed={seed_atual} ({SEEDS.index(seed_atual)+1}/{len(SEEDS)})")
+    x_s, score_s, hist_s = cma_es(
+        func     = objetivo,
+        x0       = x0,
+        sigma0   = sigma0,
+        max_iter = 1000,
+        tol      = 1e-8,
+        seed     = seed_atual
+    )
+    if score_s > melhor_score_cma:
+        melhor_score_cma = score_s
+        melhor_x         = x_s
+        historico        = hist_s
+        print(f"  ★ Novo melhor global: {melhor_score_cma:,.1f} (seed={seed_atual})")
+    else:
+        print(f"  → Score {score_s:,.1f} não superou o atual {melhor_score_cma:,.1f}")
+
+print(f"\n✔ Melhor resultado global encontrado com score: {melhor_score_cma:,.1f}")
 
 melhores_parametros = vetor_para_params(melhor_x)
 

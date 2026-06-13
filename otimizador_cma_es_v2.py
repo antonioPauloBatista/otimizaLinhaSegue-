@@ -267,7 +267,7 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             # Parada externa inegociável (quebra mecânica longa)
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
-        elif b2[i] <= 2.0 or b3[i] >= 99.0:
+        elif b2[i] <= 5.0 or b3[i] >= 97.0:  # V2: gatilho ampliado (era 2%/99%)
             # Parada de buffer crítico no histórico: otimizador pode evitá-la
             # convertendo-a em produção a velocidade reduzida (ganho real).
             fator_reduzido = 1.0
@@ -365,6 +365,8 @@ def cma_es(
     melhor_score  = -np.inf
     melhor_x      = xmean.copy()
     historico_scores = []
+    gen_sem_melhoria = 0       # Early stopping
+    PACIENCIA = 100            # para se não melhorar em 100 gerações
 
     print(f"\n{'='*60}")
     print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
@@ -382,10 +384,13 @@ def cma_es(
         # --- Ordenação: do melhor ao pior ---
         idx = np.argsort(fitness)[::-1]   # decrescente (maximização)
 
-        # Atualiza melhor global
-        if fitness[idx[0]] > melhor_score:
+        # Atualiza melhor global (melhoria mínima de 1.0 para contar)
+        if fitness[idx[0]] > melhor_score + 1.0:
             melhor_score = fitness[idx[0]]
             melhor_x     = arx[idx[0]].copy()
+            gen_sem_melhoria = 0
+        else:
+            gen_sem_melhoria += 1
 
         historico_scores.append(melhor_score)
 
@@ -425,49 +430,62 @@ def cma_es(
             D    = np.sqrt(np.maximum(D, 1e-20))
             invsqrtC = B @ np.diag(1.0 / D) @ B.T
 
-        # --- Critério de convergência ---
+        # --- Critérios de convergência ---
         if sigma < tol:
-            print(f"\n  ✔ Convergência atingida na geração {gen} (σ={sigma:.2e})")
+            print(f"\n  ✔ Convergência por σ na geração {gen} (σ={sigma:.2e})")
+            break
+        if gen_sem_melhoria >= PACIENCIA:
+            print(f"\n  ✔ Early stop: sem melhoria há {PACIENCIA} gerações (geração {gen})")
             break
 
     return melhor_x, melhor_score, historico_scores
 
 # =====================================================================
-# 6. EXECUÇÃO DA OTIMIZAÇÃO
+# 6. EXECUÇÃO DA OTIMIZAÇÃO  [V2: multi-seed + 1500 iterações]
 # =====================================================================
-print("\nIniciando Otimização Avançada Multivariável...")
-print("Cruzando velocidades de todas as máquinas com níveis de acúmulo...\n")
+print("\nIniciando Otimização Avançada Multivariável (V2)...")
+print("V2: gatilho ampliado | 1000 gerações (max) | 3 seeds | early stop\n")
 
-# Ponto inicial: centro do espaço de busca
-x0 = (BOUNDS_LO + BOUNDS_HI) / 2.0
-
-# Sigma inicial: 1/4 da amplitude de cada dimensão (em escala normalizada)
-# Como as escalas das variáveis são similares (~10–20%), sigma0=2.0 é razoável
+x0     = (BOUNDS_LO + BOUNDS_HI) / 2.0
 sigma0 = 2.0
 
 def objetivo(x):
     """Wrapper: recebe vetor, converte, simula e retorna score (a maximizar)."""
     p = vetor_para_params(x)
     score, _, _, _, _ = simular_historico_com_regras_ia(df, p, time_step_seconds, mascara_parada_longa)
-    
-    # Penalidade quadrática para incentivar o otimizador a permanecer nos limites
     penalidade = 0.0
     for i in range(len(x)):
         if x[i] < BOUNDS_LO[i]:
             penalidade += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
         elif x[i] > BOUNDS_HI[i]:
             penalidade += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
-            
     return score - penalidade
 
-melhor_x, melhor_score_cma, historico = cma_es(
-    func     = objetivo,
-    x0       = x0,
-    sigma0   = sigma0,
-    max_iter = 500,
-    tol      = 1e-8,
-    seed     = 42
-)
+# --- Multi-seed: 3 corridas independentes, pega o melhor resultado global ---
+SEEDS = [42, 123, 777]
+melhor_x          = None
+melhor_score_cma  = -np.inf
+historico         = []
+
+for seed_atual in SEEDS:
+    print(f"\n>>> Rodada seed={seed_atual} ({SEEDS.index(seed_atual)+1}/{len(SEEDS)})")
+    x_s, score_s, hist_s = cma_es(
+        func     = objetivo,
+        x0       = x0,
+        sigma0   = sigma0,
+        max_iter = 1000,
+        tol      = 1e-8,
+        seed     = seed_atual
+    )
+    if score_s > melhor_score_cma:
+        melhor_score_cma = score_s
+        melhor_x         = x_s
+        historico        = hist_s
+        print(f"  ★ Novo melhor global: {melhor_score_cma:,.1f} (seed={seed_atual})")
+    else:
+        print(f"  → Score {score_s:,.1f} não superou o atual {melhor_score_cma:,.1f}")
+
+print(f"\n✔ Melhor resultado global encontrado com score: {melhor_score_cma:,.1f}")
 
 melhores_parametros = vetor_para_params(melhor_x)
 

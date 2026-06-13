@@ -1,0 +1,42 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 28654677 unidades.
+➔ Produção Simulada Otimizada : 30496027 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +1841350 unidades (+6.43%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 3251 amostras
+   ↳ Na simulação Otimizada : 2652 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : 599 amostras (18.4% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 9455 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 5589 amostras
+   ↳ Na simulação Otimizada : 5589 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (63360 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 30.6%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 60.8%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 55.8%
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+
+ 1. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 20.6% → Ação: Enchedora → 85.0% (53856 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 30.6%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 70.8% → Ação: Enchedora → 85.0% (53856 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 60.8%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 70.8% → Ação: Enchedora → 89.7% (56813 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 55.8%
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.
