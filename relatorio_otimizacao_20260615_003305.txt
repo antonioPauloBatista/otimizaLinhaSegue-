@@ -1,0 +1,43 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE: LÓGICA DO CLP   
+=================================================================
+➔ Produção Real Registrada no Histórico: 20122623 unidades.
+➔ Produção Simulada Otimizada : 29894536 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +9771913 unidades (+48.56%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH E TEMPO DE UPTIME)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 444 amostras
+   ↳ Na simulação Otimizada: 153 amostras
+   ↳ AMOSTRAS EVITADAS         : 291 amostras (65.5% de melhoria)
+   ↳ MICROPARADAS EVITADAS     : 1436 eventos de parada que não aconteceram
+   ↳ TEMPO EXTRA RODANDO       : 2 horas e 25 minutos de UPTIME recuperado!
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 8984 amostras
+   ↳ Na simulação Otimizada: 3953 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (70000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões na faixa Normal):
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 22.5%
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 15.0%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 85.0%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 89.9%
+
+[CADEIA DE ENTRADA E SAÍDA - TRANSIÇÃO SUAVE (RAMPA DE VELOCIDADE)]
+Nota: Estas regras agem como PID ou interpolação linear SCL no CLP.
+➔ Ação: Enchedora → Reduz para 80.0% (56000 CPH)
+ 1. Falta Leve UIP-ECH (Entrada):
+    ↳ Iniciar rampa de redução quando o nível cair abaixo de 15.0%
+ 2. Acúmulo Leve ECH-PZ (Saída):
+    ↳ Iniciar rampa de redução quando o nível passar de 85.0%
+
+-----------------------------------------------------------------
+[LIMITES DE EMERGÊNCIA - PROTEÇÃO CONTRA SOCO MECÂNICO]
+➔ Ação: Enchedora → Reduz agressivamente para 0 CPH
+ 1. Falta Extrema DPL-UIP:
+    ↳ Forçar parada quando nível cair abaixo de 22.5%
+ 2. Engarrafamento Extremo PZ-EPC:
+    ↳ Forçar parada quando nível passar de 89.9%
+=================================================================

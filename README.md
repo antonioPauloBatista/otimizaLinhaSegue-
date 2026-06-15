@@ -73,7 +73,13 @@ Antes de rodar, verifique se o arquivo `config_colunas.json` está apontando par
 .venv/bin/python otimizador.py
 ```
 
-**Opção B: Otimizador por CMA-ES (Sintonia Fina)**
+**Opção B: Otimizador por Machine Learning + CMA-ES (Recomendado para provar valor)**
+Cria um modelo Surrogate (Random Forest) que aprende o comportamento da linha sem controle, e usa CMA-ES para buscar os setpoints ideais que evitam paradas, gerando um comparativo de ganho de produção.
+```bash
+.venv/bin/python otimizador_ml_cma_es.py
+```
+
+**Opção C: Otimizador por CMA-ES (Sintonia Fina)**
 ```bash
 .venv/bin/python otimizador_cma_es.py
 ```
