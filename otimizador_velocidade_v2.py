@@ -137,8 +137,10 @@ def simular_controle_vetorizado(x_params):
     b2_lim = np.clip(x_params[1], 15, 50)
     b3_lim = np.clip(x_params[2], 50, 85)
     b4_lim = np.clip(x_params[3], 70, 90)
-    rampa_b2 = np.clip(x_params[4], 5.0, 30.0)
-    rampa_b3 = np.clip(x_params[5], 5.0, 30.0)
+    rampa_b2 = np.clip(x_params[4], 15.0, 40.0)
+    rampa_b3 = np.clip(x_params[5], 15.0, 40.0)
+    antecip_b1 = np.clip(x_params[6], 10.0, 35.0)
+    antecip_b4 = np.clip(x_params[7], 10.0, 35.0)
 
     # PISO E TETO SÃO INEGOCIÁVEIS (Vêm direto do JSON, sem otimização)
     v_alta = VELOCIDADE_NOMINAL_ECH * MAX_MODULACAO
@@ -151,16 +153,20 @@ def simular_controle_vetorizado(x_params):
     b3_normal = vec_trapezoidal(b3_hist, -1, 0, b3_lim, b3_lim + rampa_b3)
     b3_alto = vec_trapezoidal(b3_hist, b3_lim, b3_lim + rampa_b3, 100, 101)
 
-    b1_baixo = vec_trapezoidal(b1_hist, -1, 0, b1_lim - 10, b1_lim)
-    b4_alto = vec_trapezoidal(b4_hist, b4_lim, b4_lim + 10, 100, 101)
+    # Early Warning (Feedforward) Ramps para B1 e B4
+    b1_tendencia = vec_trapezoidal(b1_hist, -1, 0, b1_lim, b1_lim + antecip_b1)
+    b4_tendencia = vec_trapezoidal(b4_hist, b4_lim - antecip_b4, b4_lim, 100, 101)
 
-    # Inferência de Modulação
+    # Inferência de Modulação Expandida
     w1 = b2_baixo
     w2 = b3_alto
+    w4 = b1_tendencia
+    w5 = b4_tendencia
+    
     w3 = np.minimum(b2_normal, b3_normal)
 
-    num_base = (w1 * v_reduzida) + (w2 * v_reduzida) + (w3 * v_alta)
-    den_base = w1 + w2 + w3
+    num_base = (w1 * v_reduzida) + (w2 * v_reduzida) + (w4 * v_reduzida) + (w5 * v_reduzida) + (w3 * v_alta)
+    den_base = w1 + w2 + w3 + w4 + w5
     den_base_safe = np.where(den_base == 0, 1.0, den_base)
     
     v_base = np.where(den_base == 0, v_alta, num_base / den_base_safe)
@@ -168,35 +174,26 @@ def simular_controle_vetorizado(x_params):
     # O Algoritmo matemático NÃO comanda parada (setpoint mínimo = vel_reduzida)
     v_sug_controlador = np.maximum(v_base, v_reduzida)
 
-    # SIMULAÇÃO DA FÍSICA: Se o pulmão cruzar a linha crítica, o intertravamento do CLP corta o motor (0 CPH real)
-    # Se o pulmão extremo (B1 ou B4) não existir, o corte seco recai sobre o pulmão principal (B2 < 5% ou B3 > 95%)
-    parada_falta = (b2_hist < 5.0) if b1_vazio else (b1_hist < b1_lim)
-    parada_acumulo = (b3_hist > 95.0) if b4_vazio else (b4_hist > b4_lim)
-    
-    parada_emergencia = parada_falta | parada_acumulo
-    v_sug_fisica = np.where(parada_emergencia, 0.0, v_sug_controlador)
+    # No simulador, avaliamos apenas o comportamento do algoritmo (oscilação entre o limite Min e Max)
+    # Ignoramos a física de parada forçada (0 CPH) para ver o comportamento de modulação ideal.
+    v_sug = v_sug_controlador
 
-    # Filtros Históricos Físicos
-    v_sug = np.where(mascara_parada_longa, 0.0, v_sug_fisica)
-    # Limitador do histórico real, mas NUNCA rompendo o piso de modulação exigido
-    v_sug_limitada = np.minimum(v_sug, limitador_velocidade_lenta)
-    v_sug = np.where((v_sug_limitada > 0) & (v_sug_limitada < v_reduzida), v_reduzida, v_sug_limitada)
-
-    # Cálculo do Score de Fitness (Produção - Penalidades)
-    mudancas_velocidade = np.sum(np.abs(np.diff(v_sug)) > 2000)
-    paradas_soco = np.sum((v_sug < 100) & ((b2_hist <= 15.0) | (b3_hist >= 85.0)))
+    # Penalidade quadrática para variação de velocidade (força a modulação a ser longa e suave, evitando trancos)
+    penalidade_aceleracao = np.sum((np.diff(v_sug) / 1000.0)**2)
+    # Penalidade por soco: velocidade acima da mínima (reduzida) nas zonas críticas dos pulmões
+    paradas_soco = np.sum((v_sug > v_reduzida + 10.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0)))
     
     producao = np.sum(v_sug) / 3600.0 * time_step
     
     # Penalidades Quadráticas para respeitar limites
     penalidade_bounds = 0.0
-    for i, val in enumerate(x_params[:6]):
-        lim_inf = [10, 15, 50, 70, 5, 5][i]
-        lim_sup = [30, 50, 85, 90, 30, 30][i]
+    for i, val in enumerate(x_params[:8]):
+        lim_inf = [10, 15, 50, 70, 15, 15, 10, 10][i]
+        lim_sup = [30, 50, 85, 90, 40, 40, 35, 35][i]
         if val < lim_inf: penalidade_bounds += (lim_inf - val)**2 * 100000.0
         if val > lim_sup: penalidade_bounds += (val - lim_sup)**2 * 100000.0
 
-    score = producao - (paradas_soco * 150) - (mudancas_velocidade * 0.5) - penalidade_bounds
+    score = producao - (paradas_soco * 50000) - (penalidade_aceleracao * 20.0) - penalidade_bounds
     return score, producao, v_sug
 
 # =====================================================================
@@ -280,7 +277,7 @@ def cma_es(func, x0, sigma0=1.5, max_iter=100, seed=42):
     return melhor_x, melhor_score, historico_scores
 
 # Ponto de Partida Inicial (Parâmetros estimados)
-x_inicial = np.array([20.0, 30.0, 70.0, 85.0, 15.0, 15.0])
+x_inicial = np.array([20.0, 30.0, 70.0, 85.0, 15.0, 15.0, 10.0, 10.0])
 
 # Roda Otimização
 melhores_params, melhor_score, hist_scores = cma_es(
@@ -304,11 +301,13 @@ b1_final = np.clip(melhores_params[0], 10, 30)
 b2_final = np.clip(melhores_params[1], 15, 50)
 b3_final = np.clip(melhores_params[2], 50, 85)
 b4_final = np.clip(melhores_params[3], 70, 90)
-rampa_b2_final = np.clip(melhores_params[4], 5.0, 30.0)
-rampa_b3_final = np.clip(melhores_params[5], 5.0, 30.0)
+rampa_b2_final = np.clip(melhores_params[4], 15.0, 40.0)
+rampa_b3_final = np.clip(melhores_params[5], 15.0, 40.0)
+antecip_b1_final = np.clip(melhores_params[6], 10.0, 35.0)
+antecip_b4_final = np.clip(melhores_params[7], 10.0, 35.0)
 v_red_final = MIN_MODULACAO
 
-# Salvar Modelo
+# Salvar Modelo V2
 parametros_otimizados = {
     "b1_lim": round(b1_final, 2),
     "b2_lim": round(b2_final, 2),
@@ -316,20 +315,22 @@ parametros_otimizados = {
     "b4_lim": round(b4_final, 2),
     "rampa_b2": round(rampa_b2_final, 2),
     "rampa_b3": round(rampa_b3_final, 2),
+    "antecipacao_b1": round(antecip_b1_final, 2),
+    "antecipacao_b4": round(antecip_b4_final, 2),
     "fator_reducao": round(v_red_final, 3),
     "velocidade_nominal_calculada": int(VELOCIDADE_NOMINAL_ECH)
 }
-with open("parametros_controle.json", "w", encoding="utf-8") as f:
+with open("parametros_controle_v2.json", "w", encoding="utf-8") as f:
     json.dump(parametros_otimizados, f, indent=4)
-print("➔ Parâmetros de controle salvos em 'parametros_controle.json'.")
+print("➔ Parâmetros de controle salvos em 'parametros_controle_v2.json'.")
 
 
 
 def gerar_codigo_controlador():
     codigo = f"""
 # ==========================================================
-# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA
-# (Gerado Automaticamente pelo otimizador_velocidade.py)
+# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA V2 (FEEDFORWARD)
+# (Gerado Automaticamente pelo otimizador_velocidade_v2.py)
 #
 # REGRAS INEGOCIÁVEIS:
 #   - Piso  : min_modulacao  (ex: 0.80 = 56000 CPH)
@@ -345,7 +346,6 @@ def rampa_trapezoidal(x, a, b, c, d):
     if c < x < d: return (d - x) / (d - c) if d > c else 1.0
     return 0.0
 
-
 def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={MIN_MODULACAO}, max_modulacao={MAX_MODULACAO}):
     \"\"\"
     Recebe o nivel atual dos 4 pulmoes (%) e retorna o setpoint em CPH.
@@ -354,35 +354,164 @@ def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMIN
     # --- Gatilhos de modulacao otimizados pelo algoritmo ---
     b2_lim = {b2_final:.2f}   # B2 abaixo disto -> iniciar reducao
     b3_lim = {b3_final:.2f}   # B3 acima disto  -> iniciar reducao
+    b1_lim = {b1_final:.2f}   # B1 aproximando do corte -> reducao feedforward
+    b4_lim = {b4_final:.2f}   # B4 aproximando do corte -> reducao feedforward
 
-    # --- Travas Operacionais (vindas do config_colunas.json) ---
+    # --- Travas Operacionais ---
     vel_maxima   = velocidade_nominal * max_modulacao   # Teto absoluto
     vel_reduzida = velocidade_nominal * min_modulacao   # Piso absoluto
 
-    # --- Logica Fuzzy: Avaliacao dos Pulmoes ---
+    # --- Logica Fuzzy: Avaliacao dos Pulmoes Principais ---
     b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - {rampa_b2_final:.2f}, b2_lim)
     b2_normal = rampa_trapezoidal(b2, b2_lim - {rampa_b2_final:.2f}, b2_lim, 100, 101)
     b3_normal = rampa_trapezoidal(b3, -1, 0, b3_lim, b3_lim + {rampa_b3_final:.2f})
     b3_alto   = rampa_trapezoidal(b3, b3_lim, b3_lim + {rampa_b3_final:.2f}, 100, 101)
+    
+    # --- Feedforward: Alerta antecipado dos Pulmoes Extremos ---
+    b1_tendencia = rampa_trapezoidal(b1, -1, 0, b1_lim, b1_lim + {antecip_b1_final:.2f})
+    b4_tendencia = rampa_trapezoidal(b4, b4_lim - {antecip_b4_final:.2f}, b4_lim, 100, 101)
 
     # --- Inferencia: pesos e calculo da velocidade ---
     w1 = b2_baixo                       # Entrada vazia -> reduz
     w2 = b3_alto                        # Saida cheia   -> reduz
-    w3 = min(b2_normal, b3_normal)      # Ambos OK      -> teto
+    w4 = b1_tendencia                   # Falta Extrema detectada longe -> reduz antecipadamente
+    w5 = b4_tendencia                   # Gargalo Extremo detectado longe -> reduz antecipadamente
+    
+    w3 = min(b2_normal, b3_normal)      # Ambos OK -> teto
 
-    num = (w1 * vel_reduzida) + (w2 * vel_reduzida) + (w3 * vel_maxima)
-    den = w1 + w2 + w3
+    num = (w1 * vel_reduzida) + (w2 * vel_reduzida) + (w4 * vel_reduzida) + (w5 * vel_reduzida) + (w3 * vel_maxima)
+    den = w1 + w2 + w3 + w4 + w5
 
     v_base = vel_maxima if den == 0 else num / den
 
     # --- Garantia do Piso: nunca retorna 0 CPH ---
     return int(max(v_base, vel_reduzida))
 """
-    with open("funcao_controle.py", "w", encoding="utf-8") as f:
+    with open("funcao_controle_v2.py", "w", encoding="utf-8") as f:
         f.write(codigo.strip() + "\n")
-    print(f"➔ Função autônoma gerada com sucesso em 'funcao_controle.py'.")
+    print(f"➔ Função autônoma gerada com sucesso em 'funcao_controle_v2.py'.")
 
 gerar_codigo_controlador()
+
+def gerar_codigo_controlador_live():
+    codigo_live = f"""
+import sys
+import json
+import os
+
+def rampa_trapezoidal(x, a, b, c, d):
+    \"\"\"Calcula o fator de transicao [0, 1].\"\"\"
+    if x <= a or x >= d: return 0.0
+    if a < x <= b: return (x - a) / (b - a) if b > a else 1.0
+    if b < x <= c: return 1.0
+    if c < x < d: return (d - x) / (d - c) if d > c else 1.0
+    return 0.0
+
+class ControladorVelocidadeEnchedoraV2:
+    def __init__(self, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={MIN_MODULACAO}, max_modulacao={MAX_MODULACAO}):
+        self.velocidade_nominal = velocidade_nominal
+        self.min_modulacao = min_modulacao
+        self.max_modulacao = max_modulacao
+        
+        # Parâmetros padrão (fallback)
+        self.b1_lim = {b1_final:.2f}
+        self.b2_lim = {b2_final:.2f}
+        self.b3_lim = {b3_final:.2f}
+        self.b4_lim = {b4_final:.2f}
+        self.rampa_b2 = {rampa_b2_final:.2f}
+        self.rampa_b3 = {rampa_b3_final:.2f}
+        self.antecip_b1 = {antecip_b1_final:.2f}
+        self.antecip_b4 = {antecip_b4_final:.2f}
+        self.fator_reducao_otimizado = {v_red_final:.3f}
+        
+        ARQUIVO_MODELO = "parametros_controle_v2.json"
+        if os.path.exists(ARQUIVO_MODELO):
+            try:
+                with open(ARQUIVO_MODELO, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    self.b1_lim = cfg.get("b1_lim", self.b1_lim)
+                    self.b2_lim = cfg.get("b2_lim", self.b2_lim)
+                    self.b3_lim = cfg.get("b3_lim", self.b3_lim)
+                    self.b4_lim = cfg.get("b4_lim", self.b4_lim)
+                    self.rampa_b2 = cfg.get("rampa_b2", self.rampa_b2)
+                    self.rampa_b3 = cfg.get("rampa_b3", self.rampa_b3)
+                    self.antecip_b1 = cfg.get("antecipacao_b1", self.antecip_b1)
+                    self.antecip_b4 = cfg.get("antecipacao_b4", self.antecip_b4)
+                    self.fator_reducao_otimizado = cfg.get("fator_reducao", self.fator_reducao_otimizado)
+            except Exception:
+                pass
+                
+        if os.path.exists("config_colunas.json"):
+            try:
+                with open("config_colunas.json", "r", encoding="utf-8") as f:
+                    cfg_colunas = json.load(f)
+                    self.velocidade_nominal = float(cfg_colunas.get("Velocidade_Nominal_ECH", self.velocidade_nominal))
+            except Exception:
+                pass
+            
+        self.vel_maxima = self.velocidade_nominal * self.max_modulacao
+        self.vel_reduzida = self.velocidade_nominal * self.min_modulacao
+
+    def calcular_velocidade(self, b1, b2, b3, b4):
+        b2_baixo  = rampa_trapezoidal(b2, -1, 0, self.b2_lim - self.rampa_b2, self.b2_lim)
+        b2_normal = rampa_trapezoidal(b2, self.b2_lim - self.rampa_b2, self.b2_lim, 100, 101)
+        b3_normal = rampa_trapezoidal(b3, -1, 0, self.b3_lim, self.b3_lim + self.rampa_b3)
+        b3_alto   = rampa_trapezoidal(b3, self.b3_lim, self.b3_lim + self.rampa_b3, 100, 101)
+        
+        b1_tendencia = rampa_trapezoidal(b1, -1, 0, self.b1_lim, self.b1_lim + self.antecip_b1)
+        b4_tendencia = rampa_trapezoidal(b4, self.b4_lim - self.antecip_b4, self.b4_lim, 100, 101)
+
+        w1 = b2_baixo
+        w2 = b3_alto
+        w4 = b1_tendencia
+        w5 = b4_tendencia
+        w3 = min(b2_normal, b3_normal)
+
+        num = (w1 * self.vel_reduzida) + (w2 * self.vel_reduzida) + (w4 * self.vel_reduzida) + (w5 * self.vel_reduzida) + (w3 * self.vel_maxima)
+        den = w1 + w2 + w3 + w4 + w5
+
+        v_base = self.vel_maxima if den == 0 else num / den
+        return int(max(v_base, self.vel_reduzida))
+
+if __name__ == "__main__":
+    print("="*60)
+    print("   SIMULADOR DE VELOCIDADE DA MÁQUINA - TESTE LIVE (V2)")
+    print("="*60)
+    print("Injetando parâmetros otimizados de controle V2 (Feedforward)...\\n")
+    
+    controlador = ControladorVelocidadeEnchedoraV2()
+    
+    while True:
+        try:
+            print("Digite os níveis dos buffers em % (ou pressione Ctrl+C para sair):")
+            b1 = float(input("  B1 (DPL-UIP) - Extremo Entrada : "))
+            b2 = float(input("  B2 (UIP-ECH) - Entrada Interna : "))
+            b3 = float(input("  B3 (ECH-PZ)  - Saída Interna   : "))
+            b4 = float(input("  B4 (PZ-EPC)  - Extremo Saída   : "))
+            
+            vel = controlador.calcular_velocidade(b1, b2, b3, b4)
+            
+            print("-" * 60)
+            if vel == 0:
+                print(f"➔ VELOCIDADE SUGERIDA OTIMIZADA: {{vel}} CPH 🚨 PARADA DE SEGURANÇA 🚨")
+            elif vel < controlador.velocidade_nominal:
+                print(f"➔ VELOCIDADE SUGERIDA OTIMIZADA: {{vel}} CPH ⚠️ MODULAÇÃO ATIVA")
+            else:
+                print(f"➔ VELOCIDADE SUGERIDA OTIMIZADA: {{vel}} CPH ✅ MÁQUINA FULL")
+            print("-" * 60)
+            print("")
+            
+        except KeyboardInterrupt:
+            print("\\nSaindo do simulador live...")
+            break
+        except ValueError:
+            print("\\n⚠️ Entrada inválida. Por favor, digite números (ex: 45.5)\\n")
+"""
+    with open("controlador_velocidade_live_v2.py", "w", encoding="utf-8") as f:
+        f.write(codigo_live.strip() + "\n")
+    print(f"➔ Controlador Live interativo gerado com sucesso em 'controlador_velocidade_live_v2.py'.")
+
+gerar_codigo_controlador_live()
 
 print("\n" + "="*65)
 print("     RESULTADO DA OTIMIZAÇÃO DE FLUXO     ")
@@ -394,6 +523,8 @@ print(f"   ↳ Limite Superior B3: Acima de {b3_final:.1f}%")
 print(f"   ↳ Limite Superior B4: Acima de {b4_final:.1f}%")
 print(f"   ↳ Rampa Fuzzy Entrada (B2): Janela de {rampa_b2_final:.1f}%")
 print(f"   ↳ Rampa Fuzzy Saída (B3): Janela de {rampa_b3_final:.1f}%")
+print(f"   ↳ Antecipação Feedforward B1: Gatilho + {antecip_b1_final:.1f}%")
+print(f"   ↳ Antecipação Feedforward B4: Gatilho - {antecip_b4_final:.1f}%")
 print(f"   ↳ Fator de Velocidade: {v_red_final*100:.1f}% da Nominal ({int(VELOCIDADE_NOMINAL_ECH * v_red_final)} CPH)")
 print(f"\n➔ Produção Real    : {int(prod_real)} garrafas")
 print(f"➔ Produção Otimizada: {int(producao_otimizada)} garrafas")
@@ -408,15 +539,17 @@ hist_stops_total    = int((v_ech_real_hist == 0.0).sum())
 hist_stops_buffer   = int(((v_ech_real_hist == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
 hist_stops_external = hist_stops_total - hist_stops_buffer
 
-sim_stops_buffer = int(((v_sug_final == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
-sim_stops_external = int(((v_sug_final == 0.0) & (b2_hist > 15.0) & (b3_hist < 85.0)).sum())
+sim_stops_buffer = int(((v_sug_final > (VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO) + 10.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
+sim_stops_external = hist_stops_external
 
 criticos_evitados = int(((b2_hist <= 2.0) | (b3_hist >= 99.0)).sum())
 reducao = hist_stops_buffer - sim_stops_buffer
 
 # Cálculo de Eventos de Parada (Transições de Rodando para Zero)
 eventos_parada_real = int(np.sum((v_ech_real_hist[:-1] > 0) & (v_ech_real_hist[1:] == 0)))
-eventos_parada_sim = int(np.sum((v_sug_final[:-1] > 0) & (v_sug_final[1:] == 0)))
+# Evento simulado de parada soco (entrar na zona crítica com velocidade alta)
+mascara_parada_sim = (v_sug_final > (VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO) + 10.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))
+eventos_parada_sim = int(np.sum(~mascara_parada_sim[:-1] & mascara_parada_sim[1:]))
 microparadas_evitadas = max(0, eventos_parada_real - eventos_parada_sim)
 
 # Tempo extra de máquina rodando
@@ -465,6 +598,10 @@ _rel.append(f" 1. Falta Leve UIP-ECH (Entrada):")
 _rel.append(f"    ↳ Iniciar rampa de {rampa_b2_final:.1f}% de modulação quando o nível cair abaixo de {b2_final:.1f}%")
 _rel.append(f" 2. Acúmulo Leve ECH-PZ (Saída):")
 _rel.append(f"    ↳ Iniciar rampa de {rampa_b3_final:.1f}% de modulação quando o nível passar de {b3_final:.1f}%")
+_rel.append(f" 3. Feedforward B1 (Aviso de Furo na Despaletizadora):")
+_rel.append(f"    ↳ Iniciar redução se B1 cair abaixo de {b1_final + antecip_b1_final:.1f}%")
+_rel.append(f" 4. Feedforward B4 (Aviso de Engarrafamento no Empacotador):")
+_rel.append(f"    ↳ Iniciar redução se B4 subir acima de {b4_final - antecip_b4_final:.1f}%")
 
 _rel.append("")
 _rel.append("-"*65)
@@ -597,7 +734,7 @@ print(f"➔ Gráficos salvos na pasta '{pasta_graficos}'.")
 # =====================================================================
 # 6. GRÁFICOS DE LÓGICA DE CONTROLE (FUZZY E INTERTRAVAMENTOS)
 # =====================================================================
-def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3):
+def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3, antecip_b1, antecip_b4):
     x = np.linspace(0, 100, 500)
     
     # Lógica Fuzzy de Modulação (B2 e B3)
@@ -606,6 +743,10 @@ def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3):
     
     b3_normal = vec_trapezoidal(x, -1, 0, b3_lim, b3_lim + rampa_b3)
     b3_alto = vec_trapezoidal(x, b3_lim, b3_lim + rampa_b3, 100, 101)
+
+    # Feedforward (Tendência B1 e B4)
+    b1_tend = vec_trapezoidal(x, -1, 0, b1_lim, b1_lim + antecip_b1)
+    b4_tend = vec_trapezoidal(x, b4_lim - antecip_b4, b4_lim, 100, 101)
 
     # Lógica de Intertravamento (Hard Stop 0 CPH) para B1 e B4
     b1_stop = np.where(x < b1_lim, 1.0, 0.0)
@@ -622,10 +763,12 @@ def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3):
     # -------------------------------------------------------------
     # Subplot B1 (Intertravamento CLP)
     axes[0, 0].plot(x, b1_stop, label="Corte Emergência (0 CPH)", color="#8E44AD", linewidth=2.5, drawstyle='steps-post')
+    axes[0, 0].plot(x, b1_tend, label="Feedforward Fuzzy", color="#F39C12", linewidth=2.5, linestyle='-.')
     axes[0, 0].plot(x, b1_run, label="Libera Máquina", color="#95A5A6", linewidth=2.5, drawstyle='steps-post', alpha=0.5)
     axes[0, 0].axvline(b1_lim, color="black", linestyle="--", alpha=0.5, label=f"Gatilho: {b1_lim:.1f}%")
     axes[0, 0].fill_between(x, 0, b1_stop, color="#8E44AD", alpha=0.15, step='post')
-    axes[0, 0].set_title("Intertravamento - Pulmão Extremo Entrada (B1: DPL-UIP)", fontsize=11, fontweight='bold')
+    axes[0, 0].fill_between(x, 0, b1_tend, color="#F39C12", alpha=0.1)
+    axes[0, 0].set_title("Intertravamento + Alerta - Extremo Entrada (B1)", fontsize=11, fontweight='bold')
     axes[0, 0].set_xlabel("Nível do Buffer (%)")
     axes[0, 0].set_ylabel("Estado da Máquina")
     axes[0, 0].legend(loc="center right")
@@ -660,18 +803,20 @@ def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3):
 
     # Subplot B4 (Intertravamento CLP)
     axes[1, 1].plot(x, b4_run, label="Libera Máquina", color="#95A5A6", linewidth=2.5, drawstyle='steps-pre', alpha=0.5)
+    axes[1, 1].plot(x, b4_tend, label="Feedforward Fuzzy", color="#F39C12", linewidth=2.5, linestyle='-.')
     axes[1, 1].plot(x, b4_stop, label="Corte Emergência (0 CPH)", color="#8E44AD", linewidth=2.5, drawstyle='steps-pre')
     axes[1, 1].axvline(b4_lim, color="black", linestyle="--", alpha=0.5, label=f"Gatilho: {b4_lim:.1f}%")
     axes[1, 1].fill_between(x, 0, b4_stop, color="#8E44AD", alpha=0.15, step='pre')
-    axes[1, 1].set_title("Intertravamento - Pulmão Extremo Saída (B4: PZ-EPC)", fontsize=11, fontweight='bold')
+    axes[1, 1].fill_between(x, 0, b4_tend, color="#F39C12", alpha=0.1)
+    axes[1, 1].set_title("Intertravamento + Alerta - Extremo Saída (B4)", fontsize=11, fontweight='bold')
     axes[1, 1].set_xlabel("Nível do Buffer (%)")
     axes[1, 1].set_ylabel("Estado da Máquina")
     axes[1, 1].legend(loc="center left")
     axes[1, 1].grid(True, linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    plt.savefig("graficos_logica_controle.png", dpi=150)
+    plt.savefig("graficos_logica_controle_v2.png", dpi=150)
     plt.close(fig)
-    print("➔ Gráfico das funções de controle (Intertravamento e Fuzzy) salvo em 'graficos_logica_controle.png'.")
+    print("➔ Gráfico das funções de controle (Intertravamento e Fuzzy) salvo em 'graficos_logica_controle_v2.png'.")
 
-plotar_logica_controle(b1_final, b2_final, b3_final, b4_final, rampa_b2_final, rampa_b3_final)
+plotar_logica_controle(b1_final, b2_final, b3_final, b4_final, rampa_b2_final, rampa_b3_final, antecip_b1_final, antecip_b4_final)

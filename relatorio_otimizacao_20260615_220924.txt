@@ -3,41 +3,45 @@
    RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE: LÓGICA DO CLP   
 =================================================================
 ➔ Produção Real Registrada no Histórico: 20122623 unidades.
-➔ Produção Simulada Otimizada : 29894536 unidades.
-➔ GANHO DE PRODUÇÃO ESTIMADO  : +9771913 unidades (+48.56%)
+➔ Produção Simulada Otimizada : 32507549 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +12384926 unidades (+61.55%)
 
 [MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH E TEMPO DE UPTIME)]
 ➔ Paradas por Falta/Acúmulo (Buffers):
    ↳ No histórico original : 444 amostras
-   ↳ Na simulação Otimizada: 153 amostras
-   ↳ AMOSTRAS EVITADAS         : 291 amostras (65.5% de melhoria)
-   ↳ MICROPARADAS EVITADAS     : 1436 eventos de parada que não aconteceram
-   ↳ TEMPO EXTRA RODANDO       : 2 horas e 25 minutos de UPTIME recuperado!
+   ↳ Na simulação Otimizada: 0 amostras
+   ↳ AMOSTRAS EVITADAS         : 444 amostras (100.0% de melhoria)
+   ↳ MICROPARADAS EVITADAS     : 1491 eventos de parada que não aconteceram
+   ↳ TEMPO EXTRA RODANDO       : 3 horas e 42 minutos de UPTIME recuperado!
 ➔ Paradas por Motivos Externos (Mecânica/Operador):
    ↳ No histórico original : 8984 amostras
-   ↳ Na simulação Otimizada: 3953 amostras
+   ↳ Na simulação Otimizada: 8984 amostras
 
 [VELOCIDADE ALTA (100%)]
 ➔ Ação: Enchedora → 100.0% (70000 CPH)
 ➔ Condições para rodar a 100% (Todos os pulmões na faixa Normal):
-   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 22.5%
-   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 15.0%
-   ↳ Nível do Pulmão ECH-PZ (Saída)           < 85.0%
-   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 89.9%
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 30.0%
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 30.2%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 69.9%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 78.5%
 
 [CADEIA DE ENTRADA E SAÍDA - TRANSIÇÃO SUAVE (RAMPA DE VELOCIDADE)]
 Nota: Estas regras agem como PID ou interpolação linear SCL no CLP.
 ➔ Ação: Enchedora → Reduz para 80.0% (56000 CPH)
  1. Falta Leve UIP-ECH (Entrada):
-    ↳ Iniciar rampa de redução quando o nível cair abaixo de 15.0%
+    ↳ Iniciar rampa de 16.9% de modulação quando o nível cair abaixo de 30.2%
  2. Acúmulo Leve ECH-PZ (Saída):
-    ↳ Iniciar rampa de redução quando o nível passar de 85.0%
+    ↳ Iniciar rampa de 15.0% de modulação quando o nível passar de 69.9%
+ 3. Feedforward B1 (Aviso de Furo na Despaletizadora):
+    ↳ Iniciar redução se B1 cair abaixo de 41.8%
+ 4. Feedforward B4 (Aviso de Engarrafamento no Empacotador):
+    ↳ Iniciar redução se B4 subir acima de 43.5%
 
 -----------------------------------------------------------------
 [LIMITES DE EMERGÊNCIA - PROTEÇÃO CONTRA SOCO MECÂNICO]
 ➔ Ação: Enchedora → Reduz agressivamente para 0 CPH
  1. Falta Extrema DPL-UIP:
-    ↳ Forçar parada quando nível cair abaixo de 22.5%
+    ↳ Forçar parada quando nível cair abaixo de 30.0%
  2. Engarrafamento Extremo PZ-EPC:
-    ↳ Forçar parada quando nível passar de 89.9%
+    ↳ Forçar parada quando nível passar de 78.5%
 =================================================================

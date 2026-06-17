@@ -1,6 +1,6 @@
 # ==========================================================
-# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA
-# (Gerado Automaticamente pelo otimizador_velocidade.py)
+# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA V2 (FEEDFORWARD)
+# (Gerado Automaticamente pelo otimizador_velocidade_v2.py)
 #
 # REGRAS INEGOCIÁVEIS:
 #   - Piso  : min_modulacao  (ex: 0.80 = 56000 CPH)
@@ -16,33 +16,41 @@ def rampa_trapezoidal(x, a, b, c, d):
     if c < x < d: return (d - x) / (d - c) if d > c else 1.0
     return 0.0
 
-
 def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal=70000, min_modulacao=0.8, max_modulacao=1.0):
     """
     Recebe o nivel atual dos 4 pulmoes (%) e retorna o setpoint em CPH.
     Parametros otimizados via CMA-ES em 2026-06-15.
     """
     # --- Gatilhos de modulacao otimizados pelo algoritmo ---
-    b2_lim = 15.00   # B2 abaixo disto -> iniciar reducao
-    b3_lim = 85.00   # B3 acima disto  -> iniciar reducao
+    b2_lim = 30.22   # B2 abaixo disto -> iniciar reducao
+    b3_lim = 69.93   # B3 acima disto  -> iniciar reducao
+    b1_lim = 30.00   # B1 aproximando do corte -> reducao feedforward
+    b4_lim = 78.54   # B4 aproximando do corte -> reducao feedforward
 
-    # --- Travas Operacionais (vindas do config_colunas.json) ---
+    # --- Travas Operacionais ---
     vel_maxima   = velocidade_nominal * max_modulacao   # Teto absoluto
     vel_reduzida = velocidade_nominal * min_modulacao   # Piso absoluto
 
-    # --- Logica Fuzzy: Avaliacao dos Pulmoes ---
-    b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - 15, b2_lim)
-    b2_normal = rampa_trapezoidal(b2, b2_lim - 15, b2_lim, 100, 101)
-    b3_normal = rampa_trapezoidal(b3, -1, 0, b3_lim, b3_lim + 15)
-    b3_alto   = rampa_trapezoidal(b3, b3_lim, b3_lim + 15, 100, 101)
+    # --- Logica Fuzzy: Avaliacao dos Pulmoes Principais ---
+    b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - 16.91, b2_lim)
+    b2_normal = rampa_trapezoidal(b2, b2_lim - 16.91, b2_lim, 100, 101)
+    b3_normal = rampa_trapezoidal(b3, -1, 0, b3_lim, b3_lim + 15.00)
+    b3_alto   = rampa_trapezoidal(b3, b3_lim, b3_lim + 15.00, 100, 101)
+    
+    # --- Feedforward: Alerta antecipado dos Pulmoes Extremos ---
+    b1_tendencia = rampa_trapezoidal(b1, -1, 0, b1_lim, b1_lim + 11.76)
+    b4_tendencia = rampa_trapezoidal(b4, b4_lim - 35.00, b4_lim, 100, 101)
 
     # --- Inferencia: pesos e calculo da velocidade ---
     w1 = b2_baixo                       # Entrada vazia -> reduz
     w2 = b3_alto                        # Saida cheia   -> reduz
-    w3 = min(b2_normal, b3_normal)      # Ambos OK      -> teto
+    w4 = b1_tendencia                   # Falta Extrema detectada longe -> reduz antecipadamente
+    w5 = b4_tendencia                   # Gargalo Extremo detectado longe -> reduz antecipadamente
+    
+    w3 = min(b2_normal, b3_normal)      # Ambos OK -> teto
 
-    num = (w1 * vel_reduzida) + (w2 * vel_reduzida) + (w3 * vel_maxima)
-    den = w1 + w2 + w3
+    num = (w1 * vel_reduzida) + (w2 * vel_reduzida) + (w4 * vel_reduzida) + (w5 * vel_reduzida) + (w3 * vel_maxima)
+    den = w1 + w2 + w3 + w4 + w5
 
     v_base = vel_maxima if den == 0 else num / den
 

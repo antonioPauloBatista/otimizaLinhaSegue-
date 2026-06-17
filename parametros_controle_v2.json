@@ -1,0 +1,12 @@
+{
+    "b1_lim": 30.0,
+    "b2_lim": 30.22,
+    "b3_lim": 69.93,
+    "b4_lim": 78.54,
+    "rampa_b2": 16.91,
+    "rampa_b3": 15.0,
+    "antecipacao_b1": 11.76,
+    "antecipacao_b4": 35.0,
+    "fator_reducao": 0.8,
+    "velocidade_nominal_calculada": 70000
+}
