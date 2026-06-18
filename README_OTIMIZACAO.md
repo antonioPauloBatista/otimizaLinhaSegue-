@@ -22,12 +22,13 @@ Solução de modulação inteligente de velocidade baseada em telemetria de pulm
 
 A solução tem **3 componentes** que trabalham em cadeia:
 
-### 1. `otimizador_velocidade.py` — O Motor de Otimização
-- Lê o histórico real da fábrica (`dados_completos_fabrica.csv`)
-- Usa o algoritmo **CMA-ES** (evolutivo) para descobrir os **gatilhos ideais de modulação**: em qual % de cada pulmão a Enchedora deve começar a reduzir velocidade
-- **Não otimiza** o fator de redução — esse valor é fixo e vem do JSON (`Min_Modulacao`)
-- Gera todos os arquivos de saída abaixo
-- Produz gráficos com **dois painéis**: velocidade (Real vs Otimizado) + nível dos buffers sincronizados
+### 1. Os Motores de Otimização (Versões)
+
+O projeto possui diferentes evoluções do motor de inteligência artificial (CMA-ES) que lê o histórico real da fábrica (`dados_completos_fabrica.csv`) para descobrir os gatilhos ideais:
+
+- **V1 (`otimizador_velocidade.py`)**: Lógica Fuzzy focada nos dois pulmões principais (B2 Entrada e B3 Saída). A velocidade mínima (piso) de modulação é inegociável e fixa, vindo do `config_colunas.json`.
+- **V2 (`otimizador_velocidade_v2.py`)**: Adiciona a lógica de **Feedforward** (Alerta Antecipado). Além de B2 e B3, monitora os pulmões das extremidades da linha (B1 Despaletizadora e B4 Empacotadora) para prever faltas ou gargalos antes de chegarem à enchedora. A velocidade mínima continua sendo uma regra fixa (inegociável).
+- **V3 (`otimizador_velocidade_v3.py`)**: Otimização Dinâmica do Piso. Além de otimizar os gatilhos dos 4 pulmões com Feedforward, **a Inteligência Artificial descobre qual é a Velocidade Mínima de Modulação ideal**. O piso deixa de ser uma regra fixa humana e vira uma variável otimizada (ex: o algoritmo pode provar que modular até 73.5% é melhor do que travar em 80%). O teto continua sendo fixo e inegociável.
 
 ### 2. `controlador_velocidade_live.py` — O Simulador Interativo
 - Carrega os parâmetros otimizados do `parametros_controle.json`
@@ -81,11 +82,11 @@ A solução tem **3 componentes** que trabalham em cadeia:
 ## 🏃 Como Executar
 
 ```bash
-# 1. Rodar o otimizador completo (leva ~15s)
-.venv/bin/python otimizador_velocidade.py
+# 1. Escolha a versão do otimizador e rode (leva ~15s)
+.venv/bin/python otimizador_velocidade_v3.py
 
-# 2. Testar o controlador interativamente
-.venv/bin/python controlador_velocidade_live.py
+# 2. Testar o controlador interativamente (o script apropriado gerado na saída)
+.venv/bin/python controlador_velocidade_live_v3.py
 ```
 
 ---
@@ -115,4 +116,4 @@ Cada imagem em `graficos_velocidade_otimizada/` tem 2 painéis:
 
 ---
 
-*Documentação atualizada em 2026-06-15 — versão com faixa de operação inegociável (Min/Max_Modulacao) e lógica de pulmões sem retorno de 0 CPH.*
+*Documentação atualizada em 2026-06-18 — versão com adição da V3 (velocidade mínima otimizável).*

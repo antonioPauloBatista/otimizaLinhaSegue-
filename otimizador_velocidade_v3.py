@@ -141,10 +141,11 @@ def simular_controle_vetorizado(x_params):
     rampa_b3 = np.clip(x_params[5], 15.0, 40.0)
     antecip_b1 = np.clip(x_params[6], 10.0, 35.0)
     antecip_b4 = np.clip(x_params[7], 10.0, 35.0)
+    min_modulacao_otimizado = np.clip(x_params[8], 0.50, 0.95)
 
-    # PISO E TETO SÃO INEGOCIÁVEIS (Vêm direto do JSON, sem otimização)
+    # TETO É INEGOCIÁVEL, PISO É OTIMIZADO
     v_alta = VELOCIDADE_NOMINAL_ECH * MAX_MODULACAO
-    v_reduzida = VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO
+    v_reduzida = VELOCIDADE_NOMINAL_ECH * min_modulacao_otimizado
 
     # Rampas de Pertinência Vetorizadas
     b2_baixo = vec_trapezoidal(b2_hist, -1, 0, b2_lim - rampa_b2, b2_lim)
@@ -180,16 +181,17 @@ def simular_controle_vetorizado(x_params):
 
     # Penalidade quadrática para variação de velocidade (força a modulação a ser longa e suave, evitando trancos)
     penalidade_aceleracao = np.sum((np.diff(v_sug) / 1000.0)**2)
-    # Penalidade por soco: velocidade acima da mínima (reduzida) nas zonas críticas dos pulmões
-    paradas_soco = np.sum((v_sug > v_reduzida + 10.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0)))
+    # Penalidade por soco: velocidade acima do limite seguro de referência (MIN_MODULACAO do config, ex: 80%) nas zonas críticas
+    limite_velocidade_segura = VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO + 10.0
+    paradas_soco = np.sum((v_sug > limite_velocidade_segura) & ((b2_hist <= 15.0) | (b3_hist >= 85.0)))
     
     producao = np.sum(v_sug) / 3600.0 * time_step
     
     # Penalidades Quadráticas para respeitar limites
     penalidade_bounds = 0.0
-    for i, val in enumerate(x_params[:8]):
-        lim_inf = [10, 15, 50, 70, 15, 15, 10, 10][i]
-        lim_sup = [30, 50, 85, 90, 40, 40, 35, 35][i]
+    for i, val in enumerate(x_params[:9]):
+        lim_inf = [10, 15, 50, 70, 15, 15, 10, 10, 0.50][i]
+        lim_sup = [30, 50, 85, 90, 40, 40, 35, 35, 0.95][i]
         if val < lim_inf: penalidade_bounds += (lim_inf - val)**2 * 100000.0
         if val > lim_sup: penalidade_bounds += (val - lim_sup)**2 * 100000.0
 
@@ -277,7 +279,7 @@ def cma_es(func, x0, sigma0=1.5, max_iter=100, seed=42):
     return melhor_x, melhor_score, historico_scores
 
 # Ponto de Partida Inicial (Parâmetros estimados)
-x_inicial = np.array([20.0, 30.0, 70.0, 85.0, 15.0, 15.0, 10.0, 10.0])
+x_inicial = np.array([20.0, 30.0, 70.0, 85.0, 15.0, 15.0, 10.0, 10.0, 0.80])
 
 # Roda Otimização
 melhores_params, melhor_score, hist_scores = cma_es(
@@ -305,9 +307,9 @@ rampa_b2_final = np.clip(melhores_params[4], 15.0, 40.0)
 rampa_b3_final = np.clip(melhores_params[5], 15.0, 40.0)
 antecip_b1_final = np.clip(melhores_params[6], 10.0, 35.0)
 antecip_b4_final = np.clip(melhores_params[7], 10.0, 35.0)
-v_red_final = MIN_MODULACAO
+v_red_final = np.clip(melhores_params[8], 0.50, 0.95)
 
-# Salvar Modelo V2
+# Salvar Modelo V3
 parametros_otimizados = {
     "b1_lim": round(b1_final, 2),
     "b2_lim": round(b2_final, 2),
@@ -320,17 +322,17 @@ parametros_otimizados = {
     "fator_reducao": round(v_red_final, 3),
     "velocidade_nominal_calculada": int(VELOCIDADE_NOMINAL_ECH)
 }
-with open("parametros_controle_v2.json", "w", encoding="utf-8") as f:
+with open("parametros_controle_v3.json", "w", encoding="utf-8") as f:
     json.dump(parametros_otimizados, f, indent=4)
-print("➔ Parâmetros de controle salvos em 'parametros_controle_v2.json'.")
+print("➔ Parâmetros de controle salvos em 'parametros_controle_v3.json'.")
 
 
 
 def gerar_codigo_controlador():
     codigo = f"""
 # ==========================================================
-# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA V2 (FEEDFORWARD)
-# (Gerado Automaticamente pelo otimizador_velocidade_v2.py)
+# CÓDIGO DA FUNÇÃO DO CONTROLADOR DE FLUXO DA MÁQUINA V3 (FEEDFORWARD)
+# (Gerado Automaticamente pelo otimizador_velocidade_v3.py)
 #
 # REGRAS INEGOCIÁVEIS:
 #   - Piso  : min_modulacao  (ex: 0.80 = 56000 CPH)
@@ -346,7 +348,7 @@ def rampa_trapezoidal(x, a, b, c, d):
     if c < x < d: return (d - x) / (d - c) if d > c else 1.0
     return 0.0
 
-def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={MIN_MODULACAO}, max_modulacao={MAX_MODULACAO}):
+def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={v_red_final:.3f}, max_modulacao={MAX_MODULACAO}):
     \"\"\"
     Recebe o nivel atual dos 4 pulmoes (%) e retorna o setpoint em CPH.
     Parametros otimizados via CMA-ES em {dt.datetime.now().strftime('%Y-%m-%d')}.
@@ -359,7 +361,7 @@ def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMIN
 
     # --- Travas Operacionais ---
     vel_maxima   = velocidade_nominal * max_modulacao   # Teto absoluto
-    vel_reduzida = velocidade_nominal * min_modulacao   # Piso absoluto
+    vel_reduzida = velocidade_nominal * min_modulacao   # Piso otimizado
 
     # --- Logica Fuzzy: Avaliacao dos Pulmoes Principais ---
     b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - {rampa_b2_final:.2f}, b2_lim)
@@ -387,9 +389,9 @@ def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal={int(VELOCIDADE_NOMIN
     # --- Garantia do Piso: nunca retorna 0 CPH ---
     return int(max(v_base, vel_reduzida))
 """
-    with open("funcao_controle_v2.py", "w", encoding="utf-8") as f:
+    with open("funcao_controle_v3.py", "w", encoding="utf-8") as f:
         f.write(codigo.strip() + "\n")
-    print(f"➔ Função autônoma gerada com sucesso em 'funcao_controle_v2.py'.")
+    print(f"➔ Função autônoma gerada com sucesso em 'funcao_controle_v3.py'.")
 
 gerar_codigo_controlador()
 
@@ -407,8 +409,8 @@ def rampa_trapezoidal(x, a, b, c, d):
     if c < x < d: return (d - x) / (d - c) if d > c else 1.0
     return 0.0
 
-class ControladorVelocidadeEnchedoraV2:
-    def __init__(self, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={MIN_MODULACAO}, max_modulacao={MAX_MODULACAO}):
+class ControladorVelocidadeEnchedoraV3:
+    def __init__(self, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, min_modulacao={v_red_final:.3f}, max_modulacao={MAX_MODULACAO}):
         self.velocidade_nominal = velocidade_nominal
         self.min_modulacao = min_modulacao
         self.max_modulacao = max_modulacao
@@ -424,7 +426,7 @@ class ControladorVelocidadeEnchedoraV2:
         self.antecip_b4 = {antecip_b4_final:.2f}
         self.fator_reducao_otimizado = {v_red_final:.3f}
         
-        ARQUIVO_MODELO = "parametros_controle_v2.json"
+        ARQUIVO_MODELO = "parametros_controle_v3.json"
         if os.path.exists(ARQUIVO_MODELO):
             try:
                 with open(ARQUIVO_MODELO, "r", encoding="utf-8") as f:
@@ -450,7 +452,7 @@ class ControladorVelocidadeEnchedoraV2:
                 pass
             
         self.vel_maxima = self.velocidade_nominal * self.max_modulacao
-        self.vel_reduzida = self.velocidade_nominal * self.min_modulacao
+        self.vel_reduzida = self.velocidade_nominal * self.fator_reducao_otimizado
 
     def calcular_velocidade(self, b1, b2, b3, b4):
         b2_baixo  = rampa_trapezoidal(b2, -1, 0, self.b2_lim - self.rampa_b2, self.b2_lim)
@@ -475,11 +477,11 @@ class ControladorVelocidadeEnchedoraV2:
 
 if __name__ == "__main__":
     print("="*60)
-    print("   SIMULADOR DE VELOCIDADE DA MÁQUINA - TESTE LIVE (V2)")
+    print("   SIMULADOR DE VELOCIDADE DA MÁQUINA - TESTE LIVE (V3)")
     print("="*60)
-    print("Injetando parâmetros otimizados de controle V2 (Feedforward)...\\n")
+    print("Injetando parâmetros otimizados de controle V3 (Feedforward)...\\n")
     
-    controlador = ControladorVelocidadeEnchedoraV2()
+    controlador = ControladorVelocidadeEnchedoraV3()
     
     while True:
         try:
@@ -507,9 +509,9 @@ if __name__ == "__main__":
         except ValueError:
             print("\\n⚠️ Entrada inválida. Por favor, digite números (ex: 45.5)\\n")
 """
-    with open("controlador_velocidade_live_v2.py", "w", encoding="utf-8") as f:
+    with open("controlador_velocidade_live_v3.py", "w", encoding="utf-8") as f:
         f.write(codigo_live.strip() + "\n")
-    print(f"➔ Controlador Live interativo gerado com sucesso em 'controlador_velocidade_live_v2.py'.")
+    print(f"➔ Controlador Live interativo gerado com sucesso em 'controlador_velocidade_live_v3.py'.")
 
 gerar_codigo_controlador_live()
 
@@ -822,8 +824,8 @@ def plotar_logica_controle(b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3, a
     axes[1, 1].grid(True, linestyle="--", alpha=0.4)
 
     plt.tight_layout()
-    plt.savefig("graficos_logica_controle_v2.png", dpi=150)
+    plt.savefig("graficos_logica_controle_v3.png", dpi=150)
     plt.close(fig)
-    print("➔ Gráfico das funções de controle (Intertravamento e Fuzzy) salvo em 'graficos_logica_controle_v2.png'.")
+    print("➔ Gráfico das funções de controle (Intertravamento e Fuzzy) salvo em 'graficos_logica_controle_v3.png'.")
 
 plotar_logica_controle(b1_final, b2_final, b3_final, b4_final, rampa_b2_final, rampa_b3_final, antecip_b1_final, antecip_b4_final)
