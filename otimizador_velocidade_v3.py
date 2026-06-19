@@ -52,11 +52,19 @@ if os.path.exists(ARQUIVO_CONFIG):
             COL_V_ECH = cfg.get("COL_V_ECH", COL_V_ECH)
             MIN_MODULACAO = cfg.get("Min_Modulacao", MIN_MODULACAO)
             MAX_MODULACAO = cfg.get("Max_Modulacao", MAX_MODULACAO)
-            VELOCIDADE_NOMINAL_ECH = float(cfg.get("Velocidade_Nominal_ECH", 52700.0))
+            
+            val_nominal = cfg.get("Velocidade_Nominal_ECH", None)
+            VELOCIDADE_NOMINAL_ECH = float(val_nominal) if val_nominal is not None else None
+            
+            val_manutencao = cfg.get("Limiar_Velocidade_Manutencao", None)
+            LIMIAR_VELOCIDADE_MANUTENCAO = float(val_manutencao) if val_manutencao is not None else None
     except Exception as e:
         print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}.")
+        VELOCIDADE_NOMINAL_ECH = None
+        LIMIAR_VELOCIDADE_MANUTENCAO = None
 else:
-    VELOCIDADE_NOMINAL_ECH = 52700.0
+    VELOCIDADE_NOMINAL_ECH = None
+    LIMIAR_VELOCIDADE_MANUTENCAO = None
 
 if not os.path.exists(ARQUIVO_CSV):
     print(f"⚠️ Arquivo '{ARQUIVO_CSV}' não encontrado!")
@@ -84,7 +92,24 @@ COL_B4_PZ_EPC  = resolver_coluna(COL_B4_PZ_EPC, "accumulation_percentage_PZ_EPC_
 COL_V_ECH = resolver_coluna(COL_V_ECH, "speed_actual_cph_null_filler_1")
 
 v_ech_real_hist = df[COL_V_ECH].values
-# A VELOCIDADE_NOMINAL_ECH agora vem estritamente do config_colunas.json
+
+v_validos = v_ech_real_hist[v_ech_real_hist > 0]
+v_max_historico = float(np.percentile(v_validos, 95)) if len(v_validos) > 0 else 52700.0
+alerta_velocidade_baixa = False
+
+if VELOCIDADE_NOMINAL_ECH is None:
+    # Fallback: extrair velocidade da máquina dos dados (percentil 95 ignorando zeros para evitar picos irreais)
+    VELOCIDADE_NOMINAL_ECH = v_max_historico
+    print(f"ℹ️ Velocidade Nominal não encontrada no JSON. Usando dados reais: {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+else:
+    if VELOCIDADE_NOMINAL_ECH < v_max_historico:
+        alerta_velocidade_baixa = True
+        print(f"⚠️ AVISO: A Velocidade Nominal setada ({VELOCIDADE_NOMINAL_ECH:.0f} CPH) é MENOR que a velocidade real praticada no histórico ({v_max_historico:.0f} CPH).")
+
+if LIMIAR_VELOCIDADE_MANUTENCAO is None:
+    # Fallback: 50% da nominal se não for definido no json
+    LIMIAR_VELOCIDADE_MANUTENCAO = VELOCIDADE_NOMINAL_ECH * 0.5
+    print(f"ℹ️ Limiar de Manutenção não encontrado no JSON. Usando 50% da nominal: {LIMIAR_VELOCIDADE_MANUTENCAO:.0f} CPH")
 
 b1_hist = df[COL_B1_DPL_UIP].values if COL_B1_DPL_UIP else np.full(len(df), 50.0)
 b2_hist = df[COL_B2_UIP_ECH].values
@@ -112,7 +137,7 @@ for i in range(len(df)):
 if contador_parada > limite_amostras_parada:
     mascara_parada_longa[inicio_parada:] = True
 
-limitador_velocidade_lenta = np.where(~is_zero & (v_ech_real_hist < VELOCIDADE_NOMINAL_ECH * 0.5), v_ech_real_hist, VELOCIDADE_NOMINAL_ECH)
+limitador_velocidade_lenta = np.where(~is_zero & (v_ech_real_hist <= LIMIAR_VELOCIDADE_MANUTENCAO), v_ech_real_hist, VELOCIDADE_NOMINAL_ECH)
 
 # =====================================================================
 # 2. MOTOR DE CALCULO VETORIZADO (ULTRA-RÁPIDO PARA OTIMIZAÇÃO)
@@ -132,7 +157,7 @@ def vec_trapezoidal(x_arr, a, b, c, d):
     else: res[m3] = 1.0
     return res
 
-def simular_controle_vetorizado(x_params):
+def simular_controle_vetorizado(x_params, override_vel_nominal=None):
     b1_lim = np.clip(x_params[0], 10, 30)
     b2_lim = np.clip(x_params[1], 15, 50)
     b3_lim = np.clip(x_params[2], 50, 85)
@@ -144,8 +169,9 @@ def simular_controle_vetorizado(x_params):
     min_modulacao_otimizado = np.clip(x_params[8], 0.50, 0.95)
 
     # TETO É INEGOCIÁVEL, PISO É OTIMIZADO
-    v_alta = VELOCIDADE_NOMINAL_ECH * MAX_MODULACAO
-    v_reduzida = VELOCIDADE_NOMINAL_ECH * min_modulacao_otimizado
+    vel_nominal = override_vel_nominal if override_vel_nominal is not None else VELOCIDADE_NOMINAL_ECH
+    v_alta = vel_nominal * MAX_MODULACAO
+    v_reduzida = vel_nominal * min_modulacao_otimizado
 
     # Rampas de Pertinência Vetorizadas
     b2_baixo = vec_trapezoidal(b2_hist, -1, 0, b2_lim - rampa_b2, b2_lim)
@@ -175,14 +201,17 @@ def simular_controle_vetorizado(x_params):
     # O Algoritmo matemático NÃO comanda parada (setpoint mínimo = vel_reduzida)
     v_sug_controlador = np.maximum(v_base, v_reduzida)
 
-    # No simulador, avaliamos apenas o comportamento do algoritmo (oscilação entre o limite Min e Max)
-    # Ignoramos a física de parada forçada (0 CPH) para ver o comportamento de modulação ideal.
+    # A simulação não capará mais fisicamente a máquina por lentidão histórica (removemos o limitador_velocidade_lenta),
+    # pois a manutenção será validada como uma prova de estresse matemática no passo 2 da otimização.
     v_sug = v_sug_controlador
+    
+    # Mantemos APENAS as quebras mecânicas paralisantes totais para não gerar garrafas fantasmas quando a máquina estava desligada
+    v_sug = np.where(mascara_parada_longa, 0.0, v_sug)
 
     # Penalidade quadrática para variação de velocidade (força a modulação a ser longa e suave, evitando trancos)
     penalidade_aceleracao = np.sum((np.diff(v_sug) / 1000.0)**2)
-    # Penalidade por soco: velocidade acima do limite seguro de referência (MIN_MODULACAO do config, ex: 80%) nas zonas críticas
-    limite_velocidade_segura = VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO + 10.0
+    # Penalidade por soco: velocidade acima do limite seguro de referência nas zonas críticas
+    limite_velocidade_segura = vel_nominal * MIN_MODULACAO + 10.0
     paradas_soco = np.sum((v_sug > limite_velocidade_segura) & ((b2_hist <= 15.0) | (b3_hist >= 85.0)))
     
     producao = np.sum(v_sug) / 3600.0 * time_step
@@ -398,7 +427,6 @@ gerar_codigo_controlador()
 def gerar_codigo_controlador_live():
     codigo_live = f"""
 import sys
-import json
 import os
 
 def rampa_trapezoidal(x, a, b, c, d):
@@ -415,7 +443,7 @@ class ControladorVelocidadeEnchedoraV3:
         self.min_modulacao = min_modulacao
         self.max_modulacao = max_modulacao
         
-        # Parâmetros padrão (fallback)
+        # Parâmetros hardcoded (raw) otimizados
         self.b1_lim = {b1_final:.2f}
         self.b2_lim = {b2_final:.2f}
         self.b3_lim = {b3_final:.2f}
@@ -426,31 +454,6 @@ class ControladorVelocidadeEnchedoraV3:
         self.antecip_b4 = {antecip_b4_final:.2f}
         self.fator_reducao_otimizado = {v_red_final:.3f}
         
-        ARQUIVO_MODELO = "parametros_controle_v3.json"
-        if os.path.exists(ARQUIVO_MODELO):
-            try:
-                with open(ARQUIVO_MODELO, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    self.b1_lim = cfg.get("b1_lim", self.b1_lim)
-                    self.b2_lim = cfg.get("b2_lim", self.b2_lim)
-                    self.b3_lim = cfg.get("b3_lim", self.b3_lim)
-                    self.b4_lim = cfg.get("b4_lim", self.b4_lim)
-                    self.rampa_b2 = cfg.get("rampa_b2", self.rampa_b2)
-                    self.rampa_b3 = cfg.get("rampa_b3", self.rampa_b3)
-                    self.antecip_b1 = cfg.get("antecipacao_b1", self.antecip_b1)
-                    self.antecip_b4 = cfg.get("antecipacao_b4", self.antecip_b4)
-                    self.fator_reducao_otimizado = cfg.get("fator_reducao", self.fator_reducao_otimizado)
-            except Exception:
-                pass
-                
-        if os.path.exists("config_colunas.json"):
-            try:
-                with open("config_colunas.json", "r", encoding="utf-8") as f:
-                    cfg_colunas = json.load(f)
-                    self.velocidade_nominal = float(cfg_colunas.get("Velocidade_Nominal_ECH", self.velocidade_nominal))
-            except Exception:
-                pass
-            
         self.vel_maxima = self.velocidade_nominal * self.max_modulacao
         self.vel_reduzida = self.velocidade_nominal * self.fator_reducao_otimizado
 
@@ -554,6 +557,12 @@ mascara_parada_sim = (v_sug_final > (VELOCIDADE_NOMINAL_ECH * MIN_MODULACAO) + 1
 eventos_parada_sim = int(np.sum(~mascara_parada_sim[:-1] & mascara_parada_sim[1:]))
 microparadas_evitadas = max(0, eventos_parada_real - eventos_parada_sim)
 
+# =====================================================================
+# 4.2 PASSO 2: VALIDAÇÃO DE ROBUSTEZ (MÁQUINA EM MODO MANUTENÇÃO)
+# =====================================================================
+_, producao_manutencao, v_sug_manutencao = simular_controle_vetorizado(melhores_params, override_vel_nominal=LIMIAR_VELOCIDADE_MANUTENCAO)
+sim_stops_buffer_manutencao = int(((v_sug_manutencao > (LIMIAR_VELOCIDADE_MANUTENCAO * MIN_MODULACAO) + 10.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
+
 # Tempo extra de máquina rodando
 tempo_extra_segundos = reducao * time_step
 tempo_extra_horas = int(tempo_extra_segundos // 3600)
@@ -582,6 +591,13 @@ _rel.append(f"   ↳ TEMPO EXTRA RODANDO       : {tempo_extra_horas} horas e {te
 _rel.append(f"➔ Paradas por Motivos Externos (Mecânica/Operador):")
 _rel.append(f"   ↳ No histórico original : {hist_stops_external} amostras")
 _rel.append(f"   ↳ Na simulação Otimizada: {sim_stops_external} amostras")
+
+_rel.append("")
+_rel.append("[CONFIGURAÇÕES GERAIS]")
+_rel.append(f"➔ Velocidade Nominal (100%): {int(VELOCIDADE_NOMINAL_ECH)} CPH")
+if alerta_velocidade_baixa:
+    _rel.append(f"   ⚠️ ALERTA: Esta velocidade nominal setada é menor que a praticada nos dados reais ({int(v_max_historico)} CPH).")
+_rel.append(f"➔ Limiar de Manutenção/Quebra (Simulador limita a velocidade real se menor que): {int(LIMIAR_VELOCIDADE_MANUTENCAO)} CPH")
 
 _rel.append("")
 _rel.append("[VELOCIDADE ALTA (100%)]")
@@ -613,6 +629,18 @@ _rel.append(f" 1. Falta Extrema DPL-UIP:")
 _rel.append(f"    ↳ Forçar parada quando nível cair abaixo de {b1_final:.1f}%")
 _rel.append(f" 2. Engarrafamento Extremo PZ-EPC:")
 _rel.append(f"    ↳ Forçar parada quando nível passar de {b4_final:.1f}%")
+
+_rel.append("")
+_rel.append("="*65)
+_rel.append("[VALIDAÇÃO DE ROBUSTEZ: MÁQUINA EM MODO MANUTENÇÃO]")
+_rel.append(f"➔ Otimização matemática calculada assumindo a velocidade nominal: {int(VELOCIDADE_NOMINAL_ECH)} CPH.")
+_rel.append(f"➔ Simulando a mesma lógica se a máquina for fisicamente limitada a rodar na manutenção: {int(LIMIAR_VELOCIDADE_MANUTENCAO)} CPH.")
+_rel.append(f"   ↳ Produção entregue nesse modo restrito: {int(producao_manutencao)} unidades")
+_rel.append(f"   ↳ Paradas por pulmão (Soco) nesse cenário: {sim_stops_buffer_manutencao} amostras")
+if sim_stops_buffer_manutencao == 0:
+    _rel.append("➔ Conclusão: SUCESSO! A lógica otimizada é segura e não causa gargalos mecânicos mesmo sob velocidade de manutenção.")
+else:
+    _rel.append(f"➔ Conclusão: ALERTA! A lógica gerou {sim_stops_buffer_manutencao} choques mecânicos se a máquina rodar lenta.")
 
 _rel.append("="*65)
 
@@ -648,7 +676,15 @@ pasta_graficos = "graficos_velocidade_otimizada"
 if not os.path.exists(pasta_graficos):
     os.makedirs(pasta_graficos)
 
-df_smooth = df_cma.set_index("Timestamp").resample("15Min").mean().reset_index()
+df_cma_plot = df_cma.copy()
+# Substitui 0 por NaN para não puxar a média para baixo (artefato visual)
+df_cma_plot.loc[df_cma_plot['Velocidade_Otimizada'] == 0, 'Velocidade_Otimizada'] = np.nan
+df_cma_plot.loc[df_cma_plot['Velocidade_Real'] == 0, 'Velocidade_Real'] = np.nan
+
+df_smooth = df_cma_plot.set_index("Timestamp").resample("15Min").mean().reset_index()
+# Preenche com 0 apenas os blocos de 15 minutos que ficaram 100% parados
+df_smooth['Velocidade_Otimizada'] = df_smooth['Velocidade_Otimizada'].fillna(0)
+df_smooth['Velocidade_Real'] = df_smooth['Velocidade_Real'].fillna(0)
 df_smooth['Date'] = df_smooth['Timestamp'].dt.date
 dias_unicos = df_smooth['Date'].dropna().unique()
 

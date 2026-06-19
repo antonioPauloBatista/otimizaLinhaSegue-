@@ -12,5 +12,6 @@
   "Filtro_Minutos_Parada_Longa": 10,
   "Min_Modulacao": 0.80,
   "Max_Modulacao": 1.00,
-  "Velocidade_Nominal_ECH": 70000
+  "Velocidade_Nominal_ECH": 70000,
+  "Limiar_Velocidade_Manutencao": 35000
 }

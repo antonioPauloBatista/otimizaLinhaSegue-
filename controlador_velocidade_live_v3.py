@@ -1,5 +1,4 @@
 import sys
-import json
 import os
 
 def rampa_trapezoidal(x, a, b, c, d):
@@ -11,46 +10,21 @@ def rampa_trapezoidal(x, a, b, c, d):
     return 0.0
 
 class ControladorVelocidadeEnchedoraV3:
-    def __init__(self, velocidade_nominal=70000, min_modulacao=0.766, max_modulacao=1.0):
+    def __init__(self, velocidade_nominal=70000, min_modulacao=0.500, max_modulacao=1.0):
         self.velocidade_nominal = velocidade_nominal
         self.min_modulacao = min_modulacao
         self.max_modulacao = max_modulacao
         
-        # Parâmetros padrão (fallback)
-        self.b1_lim = 20.61
-        self.b2_lim = 27.92
-        self.b3_lim = 71.50
-        self.b4_lim = 86.88
-        self.rampa_b2 = 15.00
-        self.rampa_b3 = 15.00
-        self.antecip_b1 = 10.26
-        self.antecip_b4 = 10.00
-        self.fator_reducao_otimizado = 0.766
-        
-        ARQUIVO_MODELO = "parametros_controle_v3.json"
-        if os.path.exists(ARQUIVO_MODELO):
-            try:
-                with open(ARQUIVO_MODELO, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    self.b1_lim = cfg.get("b1_lim", self.b1_lim)
-                    self.b2_lim = cfg.get("b2_lim", self.b2_lim)
-                    self.b3_lim = cfg.get("b3_lim", self.b3_lim)
-                    self.b4_lim = cfg.get("b4_lim", self.b4_lim)
-                    self.rampa_b2 = cfg.get("rampa_b2", self.rampa_b2)
-                    self.rampa_b3 = cfg.get("rampa_b3", self.rampa_b3)
-                    self.antecip_b1 = cfg.get("antecipacao_b1", self.antecip_b1)
-                    self.antecip_b4 = cfg.get("antecipacao_b4", self.antecip_b4)
-                    self.fator_reducao_otimizado = cfg.get("fator_reducao", self.fator_reducao_otimizado)
-            except Exception:
-                pass
-                
-        if os.path.exists("config_colunas.json"):
-            try:
-                with open("config_colunas.json", "r", encoding="utf-8") as f:
-                    cfg_colunas = json.load(f)
-                    self.velocidade_nominal = float(cfg_colunas.get("Velocidade_Nominal_ECH", self.velocidade_nominal))
-            except Exception:
-                pass
+        # Parâmetros hardcoded (raw) otimizados
+        self.b1_lim = 30.00
+        self.b2_lim = 18.68
+        self.b3_lim = 79.39
+        self.b4_lim = 86.10
+        self.rampa_b2 = 39.94
+        self.rampa_b3 = 40.00
+        self.antecip_b1 = 35.00
+        self.antecip_b4 = 35.00
+        self.fator_reducao_otimizado = 0.500
             
         self.vel_maxima = self.velocidade_nominal * self.max_modulacao
         self.vel_reduzida = self.velocidade_nominal * self.fator_reducao_otimizado
