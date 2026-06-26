@@ -80,9 +80,14 @@ Cria um modelo Surrogate (Random Forest) que aprende o comportamento da linha se
 ```
 
 **Opção C: Otimizador por CMA-ES (Sintonia Fina)**
+Os arquivos do otimizador CMA-ES agora estão organizados na pasta `Otimizador_CMA/`. 
+É **muito importante** entrar nesta pasta antes de executar o script para que ele carregue as configurações e os dados (CSV) corretamente a partir dessa pasta:
+
 ```bash
-.venv/bin/python otimizador_cma_es.py
+cd Otimizador_CMA
+../.venv/bin/python otimizador_cma_es.py
 ```
+*(Nota: usamos `../.venv` porque a pasta do ambiente virtual python está um nível acima, na raiz do projeto).*
 
 ### Passo 3: Programar o CLP
 Ambos os scripts imprimirão no console um relatório final pronto contendo:

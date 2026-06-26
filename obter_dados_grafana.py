@@ -19,7 +19,7 @@ import pandas as pd
 # =====================================================================
 # CONFIGURAÇÃO DE ACESSO AO GRAFANA (Edite estes valores)
 # =====================================================================
-GRAFANA_URL = "http://172.23.224.145:3000"         # URL base do Grafana (ex: http://seu-grafana.com)
+GRAFANA_URL = "http://10.91.7.221:3000"         # URL base do Grafana (ex: http://seu-grafana.com)
 
 # --- MÉTODO DE AUTENTICAÇÃO ---
 # Coloque aqui seu usuário e senha de acesso ao Grafana
@@ -35,13 +35,13 @@ GRAFANA_TOKEN = ""                            # Cole seu Service Account Token a
 # --- SELEÇÃO DO BANCO (Opcional - Descoberta Automática) ---
 # Você pode deixar vazio ("") e o script vai achar o banco InfluxDB sozinho!
 # Se tiver mais de um e quiser especificar, coloque o NOME (ex: "InfluxDB-1") ou o ID numérico (ex: 3).
-DATASOURCE_SELECTOR = "13"                      
+DATASOURCE_SELECTOR = "17"                      
 
 # --- CONFIGURAÇÃO DA QUERY ---
 BUCKET = "Segue"                              # Nome do Bucket no InfluxDB
-MEASUREMENT = "NS-512"                        # Nome da measurement (tabela) no InfluxDB
+MEASUREMENT = "502"                        # Nome da measurement (tabela) no InfluxDB
 ORG = "ABinbev"                               # Organização (opcional/requerido se InfluxDB for v2)
-START_TIME = "-7d"                            # Intervalo inicial (ex: -7d, -24h)
+START_TIME = "-30d"                            # Intervalo inicial (ex: -7d, -24h)
 STOP_TIME = "now()"                           # Intervalo final (ex: now(), ou data ISO)
 OUTPUT_FILE = "dados_completos_fabrica.csv"   # Nome do arquivo CSV gerado
 # =====================================================================
