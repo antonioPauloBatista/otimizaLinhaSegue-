@@ -66,9 +66,10 @@ O projeto possui diferentes evoluções do motor de inteligência artificial (CM
 ### Para Automação / Deploy
 | Arquivo | Uso |
 |---|---|
-| `funcao_controle.py` | Função Python pronta para integração no supervisório |
-| `parametros_controle.json` | Parâmetros de gatilho lidos pelo `controlador_velocidade_live.py` |
-| `relatorio_otimizacao_*.txt` | Relatório executivo com regras de CLP em linguagem SCL/Texto Estruturado |
+| `funcao_controle_v3.py` | Função Python isolada com Lógica Fuzzy pronta para o CLP/Supervisório |
+| `parametros_controle_v3.json` | Parâmetros otimizados (limites, rampas) |
+| `controlador_velocidade_grafana_v3.py` | Script Live que conecta direto na API do Grafana a cada 30 segundos |
+| `relatorio_otimizacao_*.txt` | Relatório detalhado das regras matemáticas descobertas |
 
 ### Para Análise e Auditoria
 | Arquivo | Uso |
@@ -82,11 +83,17 @@ O projeto possui diferentes evoluções do motor de inteligência artificial (CM
 ## 🏃 Como Executar
 
 ```bash
-# 1. Escolha a versão do otimizador e rode (leva ~15s)
-.venv/bin/python otimizador_velocidade_v3.py
+# 1. Entre na pasta correta do otimizador de velocidade
+cd Otimizador_Velocidade
 
-# 2. Testar o controlador interativamente (o script apropriado gerado na saída)
-.venv/bin/python controlador_velocidade_live_v3.py
+# 2. Rode o otimizador V3 (Lógica Fuzzy + Feedforward)
+../.venv/bin/python otimizador_velocidade_v3.py
+
+# 3. Teste o simulador interativo no terminal (Manual)
+../.venv/bin/python controlador_velocidade_live_v3.py
+
+# 4. OU deixe rodando o Controlador Live real conectado ao Grafana!
+../.venv/bin/python controlador_velocidade_grafana_v3.py
 ```
 
 ---
