@@ -1,12 +1,13 @@
 {
-  "data_otimizacao": "2026-06-25 22:29:34",
-  "Velocidade_Nominal_ECH": 41625.0,
-  "gatilho_b1_falta_extrema": 42.82431539775859,
-  "vel_ech_falta_extrema": 92.46448012364039,
-  "gatilho_b2_falta_critica": 29.582735254917207,
-  "vel_ech_falta_critica": 85.0,
-  "gatilho_b3_acumulo_critico": 74.50910771972833,
-  "vel_ech_acumulo_critico": 85.0,
-  "gatilho_b4_acumulo_extremo": 67.11954801401048,
-  "vel_ech_acumulo_extremo": 90.02681432632932
+  "data_otimizacao": "2026-07-02 00:06:25",
+  "Velocidade_Nominal_ECH": 50279.0,
+  "gatilho_b1_falta_extrema": 20.02761707892244,
+  "vel_ech_falta_extrema": 91.82882849141251,
+  "gatilho_b2_falta_critica": 24.952159629441127,
+  "vel_ech_falta_critica": 95.0,
+  "gatilho_b3_acumulo_critico": 84.98604194341723,
+  "vel_ech_acumulo_critico": 95.0,
+  "gatilho_b4_acumulo_extremo": 79.99785375605657,
+  "vel_ech_acumulo_extremo": 86.82418581679968,
+  "Fator_Sobremarcha": 1.04
 }

@@ -239,6 +239,7 @@ def calcular_velocidade_cma(b1, b2, b3, b4, params, config):
     has_b4 = b4 is not None
 
     vel_nominal = params["Velocidade_Nominal_ECH"]
+    fator_sobremarcha = params.get("Fator_Sobremarcha", 1.0)
     velocidades_sugeridas = []
 
     # --- BUFFER B1 (Antes Entrada - DPL-UIP) ---
@@ -304,13 +305,24 @@ def calcular_velocidade_cma(b1, b2, b3, b4, params, config):
             velocidades_sugeridas.append(vel_reduzida_b4)
 
     # Decisão de Velocidade (Pega o gargalo)
+    em_sprint = False
     if velocidades_sugeridas:
         fator_velocidade = min(velocidades_sugeridas) / 100.0
     else:
-        fator_velocidade = 1.0  # 100%
+        fator_velocidade = 1.0  # 100% Base
+        if fator_sobremarcha > 1.0:
+            # Verifica condições de sprint (apenas 5% a mais de exigência que o 100%)
+            condicao_b1 = (b1 > params["gatilho_b1_falta_extrema"] + 15.0) if has_b1 else True
+            condicao_b2 = (b2 > params["gatilho_b2_falta_critica"] + 15.0)
+            condicao_b3 = (b3 < params["gatilho_b3_acumulo_critico"] - 15.0)
+            condicao_b4 = (b4 < params["gatilho_b4_acumulo_extremo"] - 20.0) if has_b4 else True
+            
+            if condicao_b1 and condicao_b2 and condicao_b3 and condicao_b4:
+                fator_velocidade = fator_sobremarcha
+                em_sprint = True
 
     velocidade_cph = vel_nominal * fator_velocidade
-    return velocidade_cph, fator_velocidade * 100.0
+    return velocidade_cph, fator_velocidade * 100.0, em_sprint
 
 def main():
     global ganho_acumulado_garrafas, tempo_ultimo_ciclo
@@ -322,6 +334,16 @@ def main():
     config = carregar_configuracao()
     params = carregar_parametros_otimos()
     
+    vel_atual_params = params.get('Velocidade_Nominal_ECH', 50000.0)
+    vel_input = input(f"\n➔ Digite a Velocidade Nominal da Enchedora (CPH) para usar no Live [Enter para usar a do histórico: {vel_atual_params:.0f}]: ").strip()
+    if vel_input:
+        try:
+            nova_vel = float(vel_input)
+            params["Velocidade_Nominal_ECH"] = nova_vel
+            print(f"➔ Velocidade Nominal definida para o Live: {nova_vel:.0f} CPH\n")
+        except ValueError:
+            print(f"⚠ Valor inválido. Mantendo a velocidade do histórico: {vel_atual_params:.0f} CPH\n")
+
     # Nomes das colunas reais nos DataFrames
     b1_col = config.get("Col_Buffer_Antes_Entrada")
     b2_col = config.get("Col_Buffer_Entrada")
@@ -359,7 +381,7 @@ def main():
                 v_real_ech = float(last_row[v_ech_col]) if (v_ech_col and v_ech_col in last_row) else 0.0
                 
                 # Calcula a velocidade que o CMA-ES sugere
-                v_cma, pct_cma = calcular_velocidade_cma(b1_val, b2_val, b3_val, b4_val, params, config)
+                v_cma, pct_cma, em_sprint = calcular_velocidade_cma(b1_val, b2_val, b3_val, b4_val, params, config)
                 
                 # Cálculo de ganho/perda de produção no período
                 # O período padrão é 30 segundos (0.5 minutos)
@@ -373,14 +395,12 @@ def main():
                 # Diferença de velocidade recomendada vs real (CPH)
                 diferenca_cph = v_cma - v_real_ech
                 
-                # Ganho nesse ciclo (garrafas a mais que produziria se rodasse na velocidade CMA-ES)
-                # Exemplo: se diferenca_cph = +5000 CPH, em 30s produziria: 5000 * (30/3600) = 41.6 garrafas
-                ganho_ciclo = diferenca_cph * (segundos_decorridos / 3600.0)
-                
-                if ganho_ciclo > 0:
+                # Ganho nesse ciclo só é contabilizado se a máquina estiver rodando na vida real
+                if v_real_ech > 0:
+                    ganho_ciclo = diferenca_cph * (segundos_decorridos / 3600.0)
                     ganho_acumulado_garrafas += ganho_ciclo
                 else:
-                    ganho_ciclo = 0.0 # Se a sugestão for menor ou igual à velocidade real, não há "ganho de oportunidade" imediato
+                    ganho_ciclo = 0.0
                 
                 # Imprime painel de monitoramento no console
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] --- Atualização via Grafana ---")
@@ -404,7 +424,10 @@ def main():
                 if restricoes:
                     print(f"⚠  Restrições CMA Ativas  : {', '.join(restricoes)}")
                 else:
-                    print(f"🟢 Linha em Faixa Segura  : ECH em Velocidade Máxima")
+                    if em_sprint:
+                        print(f"🚀 SPRINT ATIVO           : ECH em Sobremarcha Segura ({pct_cma:.1f}%)")
+                    else:
+                        print(f"🟢 Linha em Faixa Segura  : ECH em Velocidade Máxima")
                 
                 # Mostra Projeções de Ganho
                 if v_cma > v_real_ech:
@@ -414,7 +437,8 @@ def main():
                 else:
                     print(f"✅ Status                 : Alinhado com a velocidade ótima do CMA-ES.")
                 
-                print(f"🏆 GANHO DE PRODUTIVIDADE ACUMULADO (Shadow Mode): +{int(ganho_acumulado_garrafas)} garrafas")
+                sinal_ganho = "+" if ganho_acumulado_garrafas >= 0 else ""
+                print(f"🏆 GANHO DE PRODUTIVIDADE ACUMULADO (Shadow Mode): {sinal_ganho}{int(ganho_acumulado_garrafas)} garrafas")
                 print("-" * 66)
             else:
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] ⚠ Nenhum dado novo recebido do Grafana. Tentando novamente no próximo ciclo...")

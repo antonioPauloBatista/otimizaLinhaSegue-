@@ -40,11 +40,13 @@ if os.path.exists(ARQUIVO_CONFIG):
             
             VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal", None)
             FILTRO_MINUTOS_PARADA_LONGA_CONFIG = cfg.get("Filtro_Minutos_Parada_Longa", None)
+            FATOR_SOBREMARCHA_CONFIG = cfg.get("Fator_Sobremarcha", 1.0)
         print(f"➔ Configuração de colunas carregada de '{ARQUIVO_CONFIG}'.")
     except Exception as e:
         print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
 
 VELOCIDADE_NOMINAL_ECH = 52700.0
+FATOR_SOBREMARCHA = 1.0
 FILTRO_MINUTOS_PARADA_LONGA = 10
 CAPACIDADE_ESTEIRAS_INTERNAS = 500
 CAPACIDADE_ESTEIRAS_EXTREMAS = 1000
@@ -163,6 +165,11 @@ else:
 if 'FILTRO_MINUTOS_PARADA_LONGA_CONFIG' in locals() and FILTRO_MINUTOS_PARADA_LONGA_CONFIG is not None:
     FILTRO_MINUTOS_PARADA_LONGA = int(FILTRO_MINUTOS_PARADA_LONGA_CONFIG)
 
+if 'FATOR_SOBREMARCHA_CONFIG' in locals() and FATOR_SOBREMARCHA_CONFIG is not None:
+    FATOR_SOBREMARCHA = float(FATOR_SOBREMARCHA_CONFIG)
+    if FATOR_SOBREMARCHA > 1.0:
+        print(f"➔ Fator de Sobremarcha detectado: {FATOR_SOBREMARCHA} ({(FATOR_SOBREMARCHA*100):.1f}%)")
+
 b2_hist = df[COL_B2_UIP_ECH].values
 b3_hist = df[COL_B3_ECH_PZ].values
 
@@ -193,9 +200,9 @@ print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amost
 
 # =====================================================================
 # 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS
-# =====================================================================
-BOUNDS_LO = np.array([35.0, 85.0, 20.0, 70.0, 70.0, 70.0, 65.0, 85.0])
-BOUNDS_HI = np.array([48.0, 95.0, 30.0, 85.0, 80.0, 85.0, 75.0, 95.0])
+# Limites mais conservadores baseados na configuração original (B1~43%, B2~24%, B3~77%, B4~71%)
+BOUNDS_LO = np.array([ 20.0, 80.0, 15.0, 80.0, 60.0, 80.0, 50.0, 80.0])
+BOUNDS_HI = np.array([ 55.0, 95.0, 45.0, 95.0, 85.0, 95.0, 80.0, 95.0])
 
 def vetor_para_params(x):
     """Clipa e converte vetor numérico em dicionário de parâmetros."""
@@ -267,7 +274,7 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             # Parada externa inegociável (quebra mecânica longa)
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
-        elif b2[i] <= 5.0 or b3[i] >= 97.0:  # V2: gatilho ampliado (era 2%/99%)
+        elif b2[i] <= 2.0 or b3[i] >= 99.0:
             # Parada de buffer crítico no histórico: otimizador pode evitá-la
             # convertendo-a em produção a velocidade reduzida (ganho real).
             fator_reduzido = 1.0
@@ -284,13 +291,26 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
         else:
-            # Máquina rodando: preserva SEMPRE a velocidade real histórica.
-            # O simulador não reduz a velocidade durante períodos de marcha porque
-            # os dados históricos são fixos — reduzir aqui apenas tira produção
-            # sem capturar o efeito real de estabilização do buffer.
-            # O ganho real do otimizador vem de EVITAR paradas (bloco acima),
-            # não de reduzir velocidade em períodos que já estavam rodando.
-            fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
+            # Máquina rodando: verifica se há condições para modo Sobremarcha (Sprint)
+            sprint_ativo = False
+            if FATOR_SOBREMARCHA > 1.0:
+                sprint_ativo = True
+                if b2[i] <= p["gatilho_b2_falta_critica"] + 15.0:
+                    sprint_ativo = False
+                if b3[i] >= p["gatilho_b3_acumulo_critico"] - 15.0:
+                    sprint_ativo = False
+                if sprint_ativo and HAS_B1 and b1 is not None:
+                    if b1[i] <= p["gatilho_b1_falta_extrema"] + 15.0:
+                        sprint_ativo = False
+                if sprint_ativo and HAS_B4 and b4 is not None:
+                    if b4[i] >= p["gatilho_b4_acumulo_extremo"] - 20.0:
+                        sprint_ativo = False
+
+            if sprint_ativo:
+                fator_velocidade = max(FATOR_SOBREMARCHA, v_ech_real[i] / VELOCIDADE_NOMINAL_ECH)
+            else:
+                # Caso contrário, preserva a velocidade real histórica
+                fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
 
             # Conta paradas de soco proativas (momento em que o buffer extremo
             # teria causado parada breve, mas o operador/CLP teria desacelerado):
@@ -365,8 +385,6 @@ def cma_es(
     melhor_score  = -np.inf
     melhor_x      = xmean.copy()
     historico_scores = []
-    gen_sem_melhoria = 0       # Early stopping
-    PACIENCIA = 100            # para se não melhorar em 100 gerações
 
     print(f"\n{'='*60}")
     print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
@@ -384,13 +402,10 @@ def cma_es(
         # --- Ordenação: do melhor ao pior ---
         idx = np.argsort(fitness)[::-1]   # decrescente (maximização)
 
-        # Atualiza melhor global (melhoria mínima de 1.0 para contar)
-        if fitness[idx[0]] > melhor_score + 1.0:
+        # Atualiza melhor global
+        if fitness[idx[0]] > melhor_score:
             melhor_score = fitness[idx[0]]
             melhor_x     = arx[idx[0]].copy()
-            gen_sem_melhoria = 0
-        else:
-            gen_sem_melhoria += 1
 
         historico_scores.append(melhor_score)
 
@@ -430,62 +445,49 @@ def cma_es(
             D    = np.sqrt(np.maximum(D, 1e-20))
             invsqrtC = B @ np.diag(1.0 / D) @ B.T
 
-        # --- Critérios de convergência ---
+        # --- Critério de convergência ---
         if sigma < tol:
-            print(f"\n  ✔ Convergência por σ na geração {gen} (σ={sigma:.2e})")
-            break
-        if gen_sem_melhoria >= PACIENCIA:
-            print(f"\n  ✔ Early stop: sem melhoria há {PACIENCIA} gerações (geração {gen})")
+            print(f"\n  ✔ Convergência atingida na geração {gen} (σ={sigma:.2e})")
             break
 
     return melhor_x, melhor_score, historico_scores
 
 # =====================================================================
-# 6. EXECUÇÃO DA OTIMIZAÇÃO  [V2: multi-seed + 1500 iterações]
+# 6. EXECUÇÃO DA OTIMIZAÇÃO
 # =====================================================================
-print("\nIniciando Otimização Avançada Multivariável (V2)...")
-print("V2: gatilho ampliado | 1000 gerações (max) | 3 seeds | early stop\n")
+print("\nIniciando Otimização Avançada Multivariável...")
+print("Cruzando velocidades de todas as máquinas com níveis de acúmulo...\n")
 
-x0     = (BOUNDS_LO + BOUNDS_HI) / 2.0
+# Ponto inicial: centro do espaço de busca
+x0 = (BOUNDS_LO + BOUNDS_HI) / 2.0
+
+# Sigma inicial: 1/4 da amplitude de cada dimensão (em escala normalizada)
+# Como as escalas das variáveis são similares (~10–20%), sigma0=2.0 é razoável
 sigma0 = 2.0
 
 def objetivo(x):
     """Wrapper: recebe vetor, converte, simula e retorna score (a maximizar)."""
     p = vetor_para_params(x)
     score, _, _, _, _ = simular_historico_com_regras_ia(df, p, time_step_seconds, mascara_parada_longa)
+    
+    # Penalidade quadrática para incentivar o otimizador a permanecer nos limites
     penalidade = 0.0
     for i in range(len(x)):
         if x[i] < BOUNDS_LO[i]:
             penalidade += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
         elif x[i] > BOUNDS_HI[i]:
             penalidade += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
+            
     return score - penalidade
 
-# --- Multi-seed: 3 corridas independentes, pega o melhor resultado global ---
-SEEDS = [42, 123, 777]
-melhor_x          = None
-melhor_score_cma  = -np.inf
-historico         = []
-
-for seed_atual in SEEDS:
-    print(f"\n>>> Rodada seed={seed_atual} ({SEEDS.index(seed_atual)+1}/{len(SEEDS)})")
-    x_s, score_s, hist_s = cma_es(
-        func     = objetivo,
-        x0       = x0,
-        sigma0   = sigma0,
-        max_iter = 1000,
-        tol      = 1e-8,
-        seed     = seed_atual
-    )
-    if score_s > melhor_score_cma:
-        melhor_score_cma = score_s
-        melhor_x         = x_s
-        historico        = hist_s
-        print(f"  ★ Novo melhor global: {melhor_score_cma:,.1f} (seed={seed_atual})")
-    else:
-        print(f"  → Score {score_s:,.1f} não superou o atual {melhor_score_cma:,.1f}")
-
-print(f"\n✔ Melhor resultado global encontrado com score: {melhor_score_cma:,.1f}")
+melhor_x, melhor_score_cma, historico = cma_es(
+    func     = objetivo,
+    x0       = x0,
+    sigma0   = sigma0,
+    max_iter = 500,
+    tol      = 1e-8,
+    seed     = 42
+)
 
 melhores_parametros = vetor_para_params(melhor_x)
 
@@ -546,6 +548,22 @@ _rel.append(f"   ↳ Nível do Pulmão ECH-PZ (Saída)           < {melhores_par
 if HAS_B4:
     _rel.append(f"   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < {melhores_parametros['gatilho_b4_acumulo_extremo'] - 15.0:.1f}%")
 
+if FATOR_SOBREMARCHA > 1.0:
+    _rel.append("")
+    _rel.append(f"[VELOCIDADE SPRINT ({(FATOR_SOBREMARCHA*100):.1f}%)]")
+    _rel.append(f"➔ Ação: Enchedora → {(FATOR_SOBREMARCHA*100):.1f}% ({int(VELOCIDADE_NOMINAL_ECH * FATOR_SOBREMARCHA)} CPH)")
+    _rel.append("➔ Condições para rodar no Sprint (Exigência de 5% de margem além do 100%):")
+    if HAS_B1 and HAS_V_DPL:
+        gat_b1_sprint = melhores_parametros['gatilho_b1_falta_extrema'] + 15.0
+        _rel.append(f"   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > {gat_b1_sprint:.1f}% (Margem Extra)")
+    gat_b2_sprint = melhores_parametros['gatilho_b2_falta_critica'] + 15.0
+    _rel.append(f"   ↳ Nível do Pulmão UIP-ECH (Entrada)        > {gat_b2_sprint:.1f}% (Margem Extra)")
+    gat_b3_sprint = melhores_parametros['gatilho_b3_acumulo_critico'] - 15.0
+    _rel.append(f"   ↳ Nível do Pulmão ECH-PZ (Saída)           < {gat_b3_sprint:.1f}% (Margem Extra)")
+    if HAS_B4:
+        gat_b4_sprint = melhores_parametros['gatilho_b4_acumulo_extremo'] - 20.0
+        _rel.append(f"   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < {gat_b4_sprint:.1f}% (Margem Extra)")
+
 _rel.append("")
 _rel.append("[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]")
 contador_entrada = 1
@@ -588,6 +606,23 @@ with open(_nome_relatorio, "w", encoding="utf-8") as _f:
     _f.write("\n".join(_rel) + "\n")
 print(f"\n➔ Relatório final salvo em '{_nome_relatorio}'.")
 
+# --- Salva os parâmetros em JSON para o controlador Live ---
+_dados_exportar = {
+    "data_otimizacao": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "Velocidade_Nominal_ECH": float(VELOCIDADE_NOMINAL_ECH),
+    "gatilho_b1_falta_extrema": float(melhores_parametros.get("gatilho_b1_falta_extrema", 0.0)),
+    "vel_ech_falta_extrema": float(melhores_parametros.get("vel_ech_falta_extrema", 0.0)),
+    "gatilho_b2_falta_critica": float(melhores_parametros.get("gatilho_b2_falta_critica", 0.0)),
+    "vel_ech_falta_critica": float(melhores_parametros.get("vel_ech_falta_critica", 0.0)),
+    "gatilho_b3_acumulo_critico": float(melhores_parametros.get("gatilho_b3_acumulo_critico", 0.0)),
+    "vel_ech_acumulo_critico": float(melhores_parametros.get("vel_ech_acumulo_critico", 0.0)),
+    "gatilho_b4_acumulo_extremo": float(melhores_parametros.get("gatilho_b4_acumulo_extremo", 0.0)),
+    "vel_ech_acumulo_extremo": float(melhores_parametros.get("vel_ech_acumulo_extremo", 0.0)),
+    "Fator_Sobremarcha": float(FATOR_SOBREMARCHA)
+}
+with open("parametros_cma_es.json", "w", encoding="utf-8") as _fjson:
+    json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
+print("➔ Configurações ótimas salvas em 'parametros_cma_es.json' para uso no Live.")
 # =====================================================================
 # 8. EXPORTAÇÃO CSV E GRÁFICO
 # =====================================================================
@@ -612,7 +647,7 @@ if GERAR_GRAFICO_PLOTS:
             "Real":      df[COL_V_ECH],
             "Otimizado": vel_simulada
         }).set_index("Timestamp")
-        df_smooth = df_plot.resample("15Min").mean().reset_index()
+        df_smooth = df_plot.resample("5Min").mean().reset_index()
 
         # Extrai os dias únicos para separar os gráficos
         df_smooth['Date'] = df_smooth['Timestamp'].dt.date
@@ -631,8 +666,19 @@ if GERAR_GRAFICO_PLOTS:
             fig, axes = plt.subplots(2, 1, figsize=(15, 10))
 
             # --- Painel 1: Comparação de velocidades (Focado no Dia) ---
-            axes[0].plot(df_dia["Timestamp"], df_dia["Real"],   label="Velocidade Real (15m)",    color="#E74C3C", alpha=0.7, linewidth=2)
-            axes[0].plot(df_dia["Timestamp"], df_dia["Otimizado"], label="Velocidade Otimizada (15m)",  color="#27AE60", alpha=0.9, linewidth=2)
+            axes[0].plot(df_dia["Timestamp"], df_dia["Real"],   label="Velocidade Real (5m)",    color="#E74C3C", alpha=0.7, linewidth=2)
+            axes[0].plot(df_dia["Timestamp"], df_dia["Otimizado"], label="Velocidade Otimizada (5m)",  color="#27AE60", alpha=0.9, linewidth=2)
+            
+            if FATOR_SOBREMARCHA > 1.0:
+                vel_sprint = VELOCIDADE_NOMINAL_ECH * FATOR_SOBREMARCHA
+                
+                # Cria uma série que só tem valor onde é sobremarcha (o resto fica NaN)
+                sprint_series = df_dia["Otimizado"].where(df_dia["Otimizado"] >= vel_sprint * 0.99)
+                
+                # Plota a linha roxa por cima da verde. 
+                # Usa um marcador pequeno para que picos isolados (de 1 única amostra) também apareçam.
+                axes[0].plot(df_dia["Timestamp"], sprint_series, color="#8E44AD", linewidth=3.0, marker=".", label="Sobremarcha Ativa")
+
             axes[0].set_title(f"Comparação de Velocidades da Enchedora (Dia: {dia})", fontsize=13, fontweight="bold")
             axes[0].set_ylabel("Velocidade (CPH)")
             axes[0].legend()
