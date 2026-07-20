@@ -22,6 +22,9 @@ COL_V_ECH = "speed_actual_cph_null_filler_1"       # Enchedora (Coração da Lin
 COL_V_ROT = "speed_actual_cph_null_pasteurizer"
 COL_V_EPC = "speed_actual_cph_null_first_downstream_machine_3"
 
+LIMITE_PARADA_FALTA = None
+LIMITE_PARADA_ACUMULO = None
+
 if os.path.exists(ARQUIVO_CONFIG):
     try:
         with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
@@ -38,9 +41,11 @@ if os.path.exists(ARQUIVO_CONFIG):
             COL_V_ROT = cfg.get("COL_V_Saida", COL_V_ROT)
             COL_V_EPC = cfg.get("COL_V_Entrada_Pos_Saida", COL_V_EPC)
             
-            VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal", None)
+            VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal_ECH", cfg.get("Velocidade_Nominal", None))
             FILTRO_MINUTOS_PARADA_LONGA_CONFIG = cfg.get("Filtro_Minutos_Parada_Longa", None)
             FATOR_SOBREMARCHA_CONFIG = cfg.get("Fator_Sobremarcha", 1.0)
+            LIMITE_PARADA_FALTA = cfg.get("Limite_Parada_Falta", None)
+            LIMITE_PARADA_ACUMULO = cfg.get("Limite_Parada_Acumulo", None)
         print(f"➔ Configuração de colunas carregada de '{ARQUIVO_CONFIG}'.")
     except Exception as e:
         print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
@@ -138,6 +143,42 @@ df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 df.ffill(inplace=True)
 df.fillna(0.0, inplace=True)
 
+# Detectar automaticamente os limites físicos de parada caso não estejam no arquivo JSON
+if LIMITE_PARADA_FALTA is None or LIMITE_PARADA_ACUMULO is None:
+    v_ech_temp = df[COL_V_ECH].values
+    b2_temp = df[COL_B2_UIP_ECH].values
+    b3_temp = df[COL_B3_ECH_PZ].values
+    paradas_idx = (v_ech_temp == 0.0)
+    
+    auto_falta = 15.0
+    auto_acumulo = 85.0
+    if paradas_idx.sum() > 0:
+        b2_parado = b2_temp[paradas_idx]
+        b3_parado = b3_temp[paradas_idx]
+        p15_b2 = np.percentile(b2_parado, 15)
+        auto_falta = float(np.clip(p15_b2, 10.0, 25.0))
+        p85_b3 = np.percentile(b3_parado, 85)
+        auto_acumulo = float(np.clip(p85_b3, 75.0, 90.0))
+        
+    if LIMITE_PARADA_FALTA is None:
+        LIMITE_PARADA_FALTA = round(auto_falta, 1)
+    if LIMITE_PARADA_ACUMULO is None:
+        LIMITE_PARADA_ACUMULO = round(auto_acumulo, 1)
+        
+    print(f"➔ Limites de parada física calculados automaticamente: Falta <= {LIMITE_PARADA_FALTA}% | Acúmulo >= {LIMITE_PARADA_ACUMULO}%")
+    
+    if os.path.exists(ARQUIVO_CONFIG):
+        try:
+            with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+            config_data["Limite_Parada_Falta"] = LIMITE_PARADA_FALTA
+            config_data["Limite_Parada_Acumulo"] = LIMITE_PARADA_ACUMULO
+            with open(ARQUIVO_CONFIG, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+            print(f"➔ Arquivo '{ARQUIVO_CONFIG}' atualizado com os novos limites automáticos.")
+        except Exception as e:
+            print(f"⚠️ Erro ao atualizar '{ARQUIVO_CONFIG}': {e}")
+
 
 if len(df) > 1:
     time_step_seconds = int((df["Timestamp"].iloc[1] - df["Timestamp"].iloc[0]).total_seconds())
@@ -174,7 +215,7 @@ b2_hist = df[COL_B2_UIP_ECH].values
 b3_hist = df[COL_B3_ECH_PZ].values
 
 hist_stops_total    = int((v_ech_real_hist == 0.0).sum())
-hist_stops_buffer   = int(((v_ech_real_hist == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
+hist_stops_buffer   = int(((v_ech_real_hist == 0.0) & ((b2_hist <= LIMITE_PARADA_FALTA) | (b3_hist >= LIMITE_PARADA_ACUMULO))).sum())
 hist_stops_external = hist_stops_total - hist_stops_buffer
 
 # FIX: Identificar paradas externas longas inegociáveis (> FILTRO_MINUTOS_PARADA_LONGA)
@@ -274,43 +315,57 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             # Parada externa inegociável (quebra mecânica longa)
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
-        elif b2[i] <= 2.0 or b3[i] >= 99.0:
-            # Parada de buffer crítico no histórico: otimizador pode evitá-la
-            # convertendo-a em produção a velocidade reduzida (ganho real).
-            fator_reduzido = 1.0
-            if b2_ativo:
-                fator_reduzido = p["vel_ech_falta_critica"] / 100.0
-            elif b3_ativo:
-                fator_reduzido = p["vel_ech_acumulo_critico"] / 100.0
+        elif v_ech_real[i] == 0.0 and (b2[i] <= LIMITE_PARADA_FALTA or b3[i] >= LIMITE_PARADA_ACUMULO):
+            # Parada de buffer no histórico original (falta ou acúmulo).
+            # O otimizador pode evitá-la rodando a velocidade reduzida SE as regras de controle estivessem ativas.
+            if b2[i] <= LIMITE_PARADA_FALTA and b2_ativo:
+                # Evitou a parada por falta de garrafas na entrada rodando a velocidade reduzida
+                fator_velocidade = p["vel_ech_falta_critica"] / 100.0
+            elif b3[i] >= LIMITE_PARADA_ACUMULO and b3_ativo:
+                # Evitou a parada por acúmulo de garrafas na saída rodando a velocidade reduzida
+                fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
             else:
-                fator_reduzido = 0.7  # redução conservadora padrão
-            fator_velocidade = fator_reduzido
-            paradas_soco_reais_ocorridas += 1  # ainda conta como parada evitada (para penalidade)
+                # Não evitou: o nível de buffer estourou e o otimizador não agiu a tempo
+                fator_velocidade = 0.0
+                paradas_soco_reais_ocorridas += 1
         elif v_ech_real[i] == 0.0:
             # Parada externa (mecânica/operador): preservada integralmente
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
         else:
-            # Máquina rodando: verifica se há condições para modo Sobremarcha (Sprint)
-            sprint_ativo = False
-            if FATOR_SOBREMARCHA > 1.0:
-                sprint_ativo = True
-                if b2[i] <= p["gatilho_b2_falta_critica"] + 15.0:
-                    sprint_ativo = False
-                if b3[i] >= p["gatilho_b3_acumulo_critico"] - 15.0:
-                    sprint_ativo = False
-                if sprint_ativo and HAS_B1 and b1 is not None:
-                    if b1[i] <= p["gatilho_b1_falta_extrema"] + 15.0:
-                        sprint_ativo = False
-                if sprint_ativo and HAS_B4 and b4 is not None:
-                    if b4[i] >= p["gatilho_b4_acumulo_extremo"] - 20.0:
-                        sprint_ativo = False
-
-            if sprint_ativo:
-                fator_velocidade = max(FATOR_SOBREMARCHA, v_ech_real[i] / VELOCIDADE_NOMINAL_ECH)
+            # Máquina rodando no histórico:
+            # Se as regras estiverem ativas, a velocidade da enchedora é reduzida para proteger os buffers.
+            if b2_ativo:
+                fator_velocidade = p["vel_ech_falta_critica"] / 100.0
+            elif b3_ativo:
+                fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
+            elif HAS_B4 and b4_ativo and v_rot[i] < VELOCIDADE_NOMINAL_ECH:
+                fator_velocidade = p["vel_ech_acumulo_extremo"] / 100.0
+                paradas_soco_evitadas += 1
+            elif HAS_B1 and HAS_V_DPL and b1_ativo and v_dpl[i] < VELOCIDADE_NOMINAL_ECH:
+                fator_velocidade = p["vel_ech_falta_extrema"] / 100.0
+                paradas_soco_evitadas += 1
             else:
-                # Caso contrário, preserva a velocidade real histórica
-                fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
+                # Caso contrário, verifica se há condições para modo Sobremarcha (Sprint)
+                sprint_ativo = False
+                if FATOR_SOBREMARCHA > 1.0:
+                    sprint_ativo = True
+                    if b2[i] <= p["gatilho_b2_falta_critica"] + 15.0:
+                        sprint_ativo = False
+                    if b3[i] >= p["gatilho_b3_acumulo_critico"] - 15.0:
+                        sprint_ativo = False
+                    if sprint_ativo and HAS_B1 and b1 is not None:
+                        if b1[i] <= p["gatilho_b1_falta_extrema"] + 15.0:
+                            sprint_ativo = False
+                    if sprint_ativo and HAS_B4 and b4 is not None:
+                        if b4[i] >= p["gatilho_b4_acumulo_extremo"] - 20.0:
+                            sprint_ativo = False
+
+                if sprint_ativo:
+                    fator_velocidade = max(FATOR_SOBREMARCHA, v_ech_real[i] / VELOCIDADE_NOMINAL_ECH)
+                else:
+                    # Caso contrário, preserva a velocidade real histórica
+                    fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
 
             # Conta paradas de soco proativas (momento em que o buffer extremo
             # teria causado parada breve, mas o operador/CLP teria desacelerado):

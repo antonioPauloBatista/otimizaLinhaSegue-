@@ -1,0 +1,13 @@
+{
+  "Col_Buffer_Antes_Entrada": "accumulation_percentage_dpl_to_uip_null",
+  "Col_Buffer_Entrada": "accumulation_percentage_uip_to_ech_null",
+  "Col_Buffer_Saida": "accumulation_percentage_ech_to_pz_null",
+  "Col_Buffer_Pos_Saida": "accumulation_percentage_pz_to_epc_null",
+  "COL_V_Antes_Entrada": "speed_actual_cph_null_third_upstream_machine_1",
+  "COL_V_Entrada": "speed_actual_cph_null_eci_1",
+  "Velocidade_Nominal_ECH": 0,
+  "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
+  "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_second_downstream_machine_1",
+  "Filtro_Minutos_Parada_Longa": 10,
+  "Fator_Sobremarcha": 1.04
+}
