@@ -2,58 +2,59 @@
 =================================================================
    RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE: LÓGICA DO CLP   
 =================================================================
-➔ Produção Real Registrada no Histórico: 52700 unidades.
-➔ Produção Simulada Otimizada : 54252 unidades.
-➔ GANHO DE PRODUÇÃO ESTIMADO  : +1552 unidades (+2.95%)
+➔ Produção Real Registrada no Histórico: 4689620 unidades.
+➔ Produção Simulada Otimizada : 5971853 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +1282232 unidades (+27.34%)
 
 [MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH E TEMPO DE UPTIME)]
 ➔ Paradas por Falta/Acúmulo (Buffers):
-   ↳ No histórico original : 0 amostras
+   ↳ No histórico original : 6768 amostras
    ↳ Na simulação Otimizada: 0 amostras
-   ↳ AMOSTRAS EVITADAS         : 0 amostras (0.0% de melhoria)
-   ↳ MICROPARADAS EVITADAS     : 0 eventos de parada que não aconteceram
-   ↳ TEMPO EXTRA RODANDO       : 0 horas e 0 minutos de UPTIME recuperado!
+   ↳ AMOSTRAS EVITADAS         : 6768 amostras (100.0% de melhoria)
+   ↳ MICROPARADAS EVITADAS     : 927 eventos de parada que não aconteceram
+   ↳ TEMPO EXTRA RODANDO       : 56 horas e 24 minutos de UPTIME recuperado!
 ➔ Paradas por Motivos Externos (Mecânica/Operador):
-   ↳ No histórico original : 0 amostras
-   ↳ Na simulação Otimizada: 0 amostras
+   ↳ No histórico original : 4633 amostras
+   ↳ Na simulação Otimizada: 4633 amostras
 
 [CONFIGURAÇÕES GERAIS]
 ➔ Velocidade Nominal (100%): 60000 CPH
+   ⚠️ ALERTA: Esta velocidade nominal setada é menor que a praticada nos dados reais (60060 CPH).
 ➔ Limiar de Manutenção/Quebra (Simulador limita a velocidade real se menor que): 30000 CPH
 
 [VELOCIDADE ALTA (100%)]
 ➔ Ação: Enchedora → 100.0% (60000 CPH)
 ➔ Condições para rodar a 100% (Todos os pulmões na faixa Normal):
-   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 18.3%
-   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 35.3%
-   ↳ Nível do Pulmão ECH-PZ (Saída)           < 60.1%
-   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 87.1%
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 13.7%
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 32.6%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 50.7%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 71.3%
 
 [CADEIA DE ENTRADA E SAÍDA - TRANSIÇÃO SUAVE (RAMPA DE VELOCIDADE)]
 Nota: Estas regras agem como PID ou interpolação linear SCL no CLP.
-➔ Ação: Enchedora → Reduz para 79.3% (47598 CPH)
+➔ Ação: Enchedora → Reduz para 60.7% (36430 CPH)
  1. Falta Leve UIP-ECH (Entrada):
-    ↳ Iniciar rampa de 15.9% de modulação quando o nível cair abaixo de 35.3%
+    ↳ Iniciar rampa de 37.9% de modulação quando o nível cair abaixo de 32.6%
  2. Acúmulo Leve ECH-PZ (Saída):
-    ↳ Iniciar rampa de 20.3% de modulação quando o nível passar de 60.1%
+    ↳ Iniciar rampa de 34.7% de modulação quando o nível passar de 50.7%
  3. Feedforward B1 (Aviso de Furo na Despaletizadora):
-    ↳ Iniciar redução se B1 cair abaixo de 30.8%
+    ↳ Iniciar redução se B1 cair abaixo de 23.8%
  4. Feedforward B4 (Aviso de Engarrafamento no Empacotador):
-    ↳ Iniciar redução se B4 subir acima de 76.2%
+    ↳ Iniciar redução se B4 subir acima de 36.3%
 
 -----------------------------------------------------------------
 [LIMITES DE EMERGÊNCIA - PROTEÇÃO CONTRA SOCO MECÂNICO]
 ➔ Ação: Enchedora → Reduz agressivamente para 0 CPH
  1. Falta Extrema DPL-UIP:
-    ↳ Forçar parada quando nível cair abaixo de 18.3%
+    ↳ Forçar parada quando nível cair abaixo de 13.7%
  2. Engarrafamento Extremo PZ-EPC:
-    ↳ Forçar parada quando nível passar de 87.1%
+    ↳ Forçar parada quando nível passar de 71.3%
 
 =================================================================
 [VALIDAÇÃO DE ROBUSTEZ: MÁQUINA EM MODO MANUTENÇÃO]
 ➔ Otimização matemática calculada assumindo a velocidade nominal: 60000 CPH.
 ➔ Simulando a mesma lógica se a máquina for fisicamente limitada a rodar na manutenção: 30000 CPH.
-   ↳ Produção entregue nesse modo restrito: 27126 unidades
+   ↳ Produção entregue nesse modo restrito: 2985926 unidades
    ↳ Paradas por pulmão (Soco) nesse cenário: 0 amostras
 ➔ Conclusão: SUCESSO! A lógica otimizada é segura e não causa gargalos mecânicos mesmo sob velocidade de manutenção.
 =================================================================

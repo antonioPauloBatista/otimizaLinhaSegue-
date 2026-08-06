@@ -1,0 +1,46 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 5243881 unidades.
+➔ Produção Simulada Otimizada : 6331840 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +1087958 unidades (+20.75%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 19917 amostras
+   ↳ Na simulação Otimizada : 20673 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : -756 amostras (-3.8% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 8033 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 12712 amostras
+   ↳ Na simulação Otimizada : 9219 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (40000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 64.9%
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 46.1%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 51.1%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 37.6%
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+ 1. Tela Falta DPL-UIP (Extremo):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 54.9% → Ação: Enchedora → 95.0% (38000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 64.9%
+
+ 2. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 36.1% → Ação: Enchedora → 85.0% (34000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 46.1%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 61.1% → Ação: Enchedora → 85.0% (34000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 51.1%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 52.6% → Ação: Enchedora → 95.0% (38000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 37.6%
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.

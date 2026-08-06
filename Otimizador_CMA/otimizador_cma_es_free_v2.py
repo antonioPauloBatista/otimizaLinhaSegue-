@@ -240,10 +240,35 @@ if contador_parada > limite_amostras_parada:
 print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amostras_parada} amostras). {mascara_parada_longa.sum()} amostras marcadas como inegociáveis.")
 
 # =====================================================================
-# 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS
-# Limites mais conservadores baseados na configuração original (B1~43%, B2~24%, B3~77%, B4~71%)
-BOUNDS_LO = np.array([ 20.0, 70.0, 15.0, 50.0, 60.0, 50.0, 50.0, 70.0])
-BOUNDS_HI = np.array([ 55.0, 95.0, 45.0, 85.0, 85.0, 85.0, 80.0, 95.0])
+# 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS (V2: BOUNDS DINÂMICOS AUTOMÁTICOS)
+# =====================================================================
+lim_falta_val = LIMITE_PARADA_FALTA if LIMITE_PARADA_FALTA is not None else 10.0
+lim_acumulo_val = LIMITE_PARADA_ACUMULO if LIMITE_PARADA_ACUMULO is not None else 85.2
+
+BOUNDS_LO = np.array([
+    lim_falta_val + 5.0,  # B1 gatilho min (dinâmico ex: 15%)
+    95.0,                 # B1 vel fixa em 95%
+    lim_falta_val + 5.0,  # B2 gatilho min (dinâmico ex: 15%)
+    95.0,                 # B2 vel fixa em 95%
+    50.0,                 # B3 gatilho min (dinâmico ex: 50%)
+    95.0,                 # B3 vel fixa em 95%
+    50.0,                 # B4 gatilho min (dinâmico ex: 50%)
+    95.0                  # B4 vel fixa em 95%
+])
+
+BOUNDS_HI = np.array([
+    50.0,                 # B1 gatilho max (dinâmico ex: 50%)
+    95.0,                 # B1 vel fixa em 95%
+    50.0,                 # B2 gatilho max (dinâmico ex: 50%)
+    95.0,                 # B2 vel fixa em 95%
+    lim_acumulo_val - 2.0,# B3 gatilho max (dinâmico ex: 83.2%)
+    95.0,                 # B3 vel fixa em 95%
+    lim_acumulo_val - 2.0,# B4 gatilho max (dinâmico ex: 83.2%)
+    95.0                  # B4 vel fixa em 95%
+])
+print(f"➔ [V2] Bounds dinâmicos automáticos ativados.")
+print(f"   ↳ BOUNDS_LO: {BOUNDS_LO.tolist()}")
+print(f"   ↳ BOUNDS_HI: {BOUNDS_HI.tolist()}")
 
 def vetor_para_params(x):
     """Clipa e converte vetor numérico em dicionário de parâmetros."""
@@ -316,21 +341,14 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
         elif v_ech_real[i] == 0.0 and (b2[i] <= LIMITE_PARADA_FALTA or b3[i] >= LIMITE_PARADA_ACUMULO):
-            # REGRA REALISTA: 95% não salva buffer severo. A redução precisa ser <= 85% para salvar falta de garrafas.
+            # Parada de buffer no histórico original (falta ou acúmulo).
+            # O otimizador pode evitá-la rodando a velocidade reduzida SE as regras de controle estivessem ativas.
             if b2[i] <= LIMITE_PARADA_FALTA and b2_ativo:
-                if p["vel_ech_falta_critica"] <= 85.0: # Exige redução real
-                    fator_velocidade = p["vel_ech_falta_critica"] / 100.0
-                else:
-                    # 95% foi fraco demais: a máquina teria parado na vida real!
-                    fator_velocidade = 0.0
-                    paradas_soco_reais_ocorridas += 1
-                    
+                # Evitou a parada por falta de garrafas na entrada rodando a velocidade reduzida
+                fator_velocidade = p["vel_ech_falta_critica"] / 100.0
             elif b3[i] >= LIMITE_PARADA_ACUMULO and b3_ativo:
-                if p["vel_ech_acumulo_critico"] <= 85.0: # Exige redução real
-                    fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
-                else:
-                    fator_velocidade = 0.0
-                    paradas_soco_reais_ocorridas += 1
+                # Evitou a parada por acúmulo de garrafas na saída rodando a velocidade reduzida
+                fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
             else:
                 # Não evitou: o nível de buffer estourou e o otimizador não agiu a tempo
                 fator_velocidade = 0.0
@@ -447,11 +465,6 @@ def cma_es(
     melhor_score  = -np.inf
     melhor_x      = xmean.copy()
     historico_scores = []
-    
-    # Controle de estagnação (early stopping)
-    max_stagnation = 50  # gerações sem melhora significativa
-    geracoes_sem_melhora = 0
-    tol_score = 1.0      # melhoria mínima no score para zerar a estagnação
 
     print(f"\n{'='*60}")
     print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
@@ -469,24 +482,16 @@ def cma_es(
         # --- Ordenação: do melhor ao pior ---
         idx = np.argsort(fitness)[::-1]   # decrescente (maximização)
 
-        # Atualiza melhor global e checa estagnação
-        melhor_da_geracao = fitness[idx[0]]
-        if melhor_da_geracao > melhor_score + tol_score:
-            melhor_score = melhor_da_geracao
+        # Atualiza melhor global
+        if fitness[idx[0]] > melhor_score:
+            melhor_score = fitness[idx[0]]
             melhor_x     = arx[idx[0]].copy()
-            geracoes_sem_melhora = 0
-        elif melhor_da_geracao > melhor_score:
-            melhor_score = melhor_da_geracao
-            melhor_x     = arx[idx[0]].copy()
-            geracoes_sem_melhora += 1
-        else:
-            geracoes_sem_melhora += 1
 
         historico_scores.append(melhor_score)
 
         # Log a cada 50 gerações
         if gen % 50 == 0 or gen == max_iter - 1:
-            print(f"  Geração {gen:4d} | Melhor score: {melhor_score:,.1f} | σ: {sigma:.4f} | Estagnação: {geracoes_sem_melhora}/{max_stagnation}")
+            print(f"  Geração {gen:4d} | Melhor score: {melhor_score:,.1f} | σ: {sigma:.4f}")
 
         # --- Recombinação dos μ melhores ---
         xold   = xmean.copy()
@@ -524,10 +529,6 @@ def cma_es(
         if sigma < tol:
             print(f"\n  ✔ Convergência atingida na geração {gen} (σ={sigma:.2e})")
             break
-            
-        if geracoes_sem_melhora >= max_stagnation:
-            print(f"\n  ✔ Parada antecipada (Early Stopping) na geração {gen}: Nenhuma melhora significativa após {max_stagnation} gerações consecutivas.")
-            break
 
     return melhor_x, melhor_score, historico_scores
 
@@ -547,27 +548,17 @@ sigma0 = 2.0
 def objetivo(x):
     """Wrapper: recebe vetor, converte, simula e retorna score (a maximizar)."""
     p = vetor_para_params(x)
-    score, prod, paradas_reais, paradas_ext, evitadas = simular_historico_com_regras_ia(
-        df, p, time_step_seconds, mascara_parada_longa
-    )
+    score, _, _, _, _ = simular_historico_com_regras_ia(df, p, time_step_seconds, mascara_parada_longa)
     
-    # 1. Penaliza se o gatilho de falta (B2) for perigosamente perto da parada física (LIMITE_PARADA_FALTA)
-    margem_falta = p["gatilho_b2_falta_critica"] - LIMITE_PARADA_FALTA
-    penalidade_risco_falta = (12.0 - margem_falta) ** 2 * 1000.0 if margem_falta < 12.0 else 0.0
-
-    # 2. Penaliza se o gatilho de acúmulo (B3) for perigosamente perto da parada física (LIMITE_PARADA_ACUMULO)
-    margem_acumulo = LIMITE_PARADA_ACUMULO - p["gatilho_b3_acumulo_critico"]
-    penalidade_risco_acumulo = (12.0 - margem_acumulo) ** 2 * 1000.0 if margem_acumulo < 12.0 else 0.0
-
-    # Penalidade quadrática por extrapolar os limites do vetor
-    penalidade_bounds = 0.0
+    # Penalidade quadrática para incentivar o otimizador a permanecer nos limites
+    penalidade = 0.0
     for i in range(len(x)):
         if x[i] < BOUNDS_LO[i]:
-            penalidade_bounds += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
+            penalidade += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
         elif x[i] > BOUNDS_HI[i]:
-            penalidade_bounds += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
-
-    return score - penalidade_risco_falta - penalidade_risco_acumulo - penalidade_bounds
+            penalidade += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
+            
+    return score - penalidade
 
 melhor_x, melhor_score_cma, historico = cma_es(
     func     = objetivo,

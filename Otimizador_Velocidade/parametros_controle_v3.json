@@ -1,12 +1,12 @@
 {
-    "b1_lim": 15.71,
-    "b2_lim": 26.75,
-    "b3_lim": 72.51,
-    "b4_lim": 89.99,
-    "rampa_b2": 40.0,
-    "rampa_b3": 31.25,
-    "antecipacao_b1": 17.14,
-    "antecipacao_b4": 15.92,
-    "fator_reducao": 0.5,
-    "velocidade_nominal_calculada": 45000
+    "b1_lim": 13.68,
+    "b2_lim": 32.62,
+    "b3_lim": 50.67,
+    "b4_lim": 71.26,
+    "rampa_b2": 37.87,
+    "rampa_b3": 34.75,
+    "antecipacao_b1": 10.11,
+    "antecipacao_b4": 35.0,
+    "fator_reducao": 0.607,
+    "velocidade_nominal_calculada": 60000
 }

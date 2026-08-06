@@ -1,0 +1,54 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 5020724 unidades.
+➔ Produção Simulada Otimizada : 5860718 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +839994 unidades (+16.73%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 3169 amostras
+   ↳ Na simulação Otimizada : 1949 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : 1220 amostras (38.5% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 1512 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 42693 amostras
+   ↳ Na simulação Otimizada : 42693 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (30000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 30.0%
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 26.6%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 74.8%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 64.9%
+
+[VELOCIDADE SPRINT (101.0%)]
+➔ Ação: Enchedora → 101.0% (30300 CPH)
+➔ Condições para rodar no Sprint (Exigência de 5% de margem além do 100%):
+   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > 35.0% (Margem Extra)
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 31.6% (Margem Extra)
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 69.8% (Margem Extra)
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 59.9% (Margem Extra)
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+ 1. Tela Falta DPL-UIP (Extremo):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 20.0% → Ação: Enchedora → 95.0% (28500 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 30.0%
+
+ 2. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 16.6% → Ação: Enchedora → 81.0% (24294 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 26.6%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 84.8% → Ação: Enchedora → 95.0% (28500 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 74.8%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 79.9% → Ação: Enchedora → 95.0% (28500 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 64.9%
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.

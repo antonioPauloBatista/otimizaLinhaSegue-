@@ -19,7 +19,7 @@ import pandas as pd
 # =====================================================================
 # CONFIGURAÇÃO DE ACESSO AO GRAFANA (Edite estes valores)
 # =====================================================================
-GRAFANA_URL = "http://172.19.209.95:3000"         # URL base do Grafana (ex: http://seu-grafana.com)
+GRAFANA_URL = "http://10.91.7.221:3000"         # URL base do Grafana (ex: http://seu-grafana.com)
 
 # --- MÉTODO DE AUTENTICAÇÃO ---
 # Coloque aqui seu usuário e senha de acesso ao Grafana
@@ -35,11 +35,11 @@ GRAFANA_TOKEN = ""                            # Cole seu Service Account Token a
 # --- SELEÇÃO DO BANCO (Opcional - Descoberta Automática) ---
 # Você pode deixar vazio ("") e o script vai achar o banco InfluxDB sozinho!
 # Se tiver mais de um e quiser especificar, coloque o NOME (ex: "InfluxDB-1") ou o ID numérico (ex: 3).
-DATASOURCE_SELECTOR = "9"                      
+DATASOURCE_SELECTOR = "17"                      
 
 # --- CONFIGURAÇÃO DA QUERY ---
 BUCKET = "Segue"                              # Nome do Bucket no InfluxDB
-MEASUREMENT = "541"                        # Nome da measurement (tabela) no InfluxDB
+MEASUREMENT = "501"                        # Nome da measurement (tabela) no InfluxDB
 ORG = "ABinbev"                               # Organização (opcional/requerido se InfluxDB for v2)
 START_TIME = "-30d"                            # Intervalo inicial (ex: -7d, -24h)
 STOP_TIME = "now()"                           # Intervalo final (ex: now(), ou data ISO)
@@ -229,6 +229,11 @@ def main():
     parser.add_argument("--list", action="store_true", help="Lista as fontes de dados do tipo InfluxDB cadastradas no Grafana e sai.")
 
     args = parser.parse_args()
+
+    # Garante que a URL possui o protocolo http:// ou https://
+    if not args.url.startswith("http://") and not args.url.startswith("https://"):
+        args.url = f"http://{args.url}"
+    args.url = args.url.rstrip("/")
 
     session = requests.Session()
     # Ignora variáveis de ambiente de proxy que costumam causar timeouts em scripts Python

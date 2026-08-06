@@ -47,6 +47,7 @@ Variáveis que alteram a matemática ou lógica da simulação e otimização.
   "Col_Buffer_Pos_Saida": "accumulation_percentage_pz_to_epc_null",
   "COL_V_Antes_Entrada": "speed_actual_cph_null_third_upstream_machine_1",
   "COL_V_Entrada": "speed_actual_cph_null_eci_1",
+  "COL_V_ECH": "speed_actual_cph_null_filler_1",
   "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
   "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_second_downstream_machine_1",
   "Velocidade_Nominal_ECH": 0,

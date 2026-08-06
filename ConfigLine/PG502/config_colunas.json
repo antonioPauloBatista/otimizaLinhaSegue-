@@ -9,12 +9,12 @@
   "COL_V_ECH": "speed_actual_cph_null_filler_1",
   "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
   "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_first_downstream_machine_1",
-  "Velocidade_Nominal_ECH": 40000,
-  "Min_Modulacao": 0.8,
-  "Max_Modulacao": 1.0,
+  "Velocidade_Nominal_ECH": 45000,
+  "Min_Modulacao": 0.80,
+  "Max_Modulacao": 1.00,
   "Filtro_Minutos_Parada_Longa": 10,
-  "Fator_Sobremarcha": 1.0,
-  "Limiar_Velocidade_Manutencao": 25000,
+  "Fator_Sobremarcha": 1.01,
   "Limite_Parada_Falta": 10.0,
-  "Limite_Parada_Acumulo": 75.0
+  "Limite_Parada_Acumulo": 85.2,
+  "Limiar_Velocidade_Manutencao": 45000
 }

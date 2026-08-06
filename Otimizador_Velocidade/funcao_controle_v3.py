@@ -16,30 +16,30 @@ def rampa_trapezoidal(x, a, b, c, d):
     if c < x < d: return (d - x) / (d - c) if d > c else 1.0
     return 0.0
 
-def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal=45000, min_modulacao=0.500, max_modulacao=1.0):
+def calcular_velocidade(b1, b2, b3, b4, velocidade_nominal=60000, min_modulacao=0.607, max_modulacao=1.0):
     """
     Recebe o nivel atual dos 4 pulmoes (%) e retorna o setpoint em CPH.
-    Parametros otimizados via CMA-ES em 2026-06-25.
+    Parametros otimizados via CMA-ES em 2026-07-27.
     """
     # --- Gatilhos de modulacao otimizados pelo algoritmo ---
-    b2_lim = 26.75   # B2 abaixo disto -> iniciar reducao
-    b3_lim = 72.51   # B3 acima disto  -> iniciar reducao
-    b1_lim = 15.71   # B1 aproximando do corte -> reducao feedforward
-    b4_lim = 89.99   # B4 aproximando do corte -> reducao feedforward
+    b2_lim = 32.62   # B2 abaixo disto -> iniciar reducao
+    b3_lim = 50.67   # B3 acima disto  -> iniciar reducao
+    b1_lim = 13.68   # B1 aproximando do corte -> reducao feedforward
+    b4_lim = 71.26   # B4 aproximando do corte -> reducao feedforward
 
     # --- Travas Operacionais ---
     vel_maxima   = velocidade_nominal * max_modulacao   # Teto absoluto
     vel_reduzida = velocidade_nominal * min_modulacao   # Piso otimizado
 
     # --- Logica Fuzzy: Avaliacao dos Pulmoes Principais ---
-    b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - 40.00, b2_lim)
-    b2_normal = rampa_trapezoidal(b2, b2_lim - 40.00, b2_lim, 100, 101)
-    b3_normal = rampa_trapezoidal(b3, -1, 0, b3_lim, b3_lim + 31.25)
-    b3_alto   = rampa_trapezoidal(b3, b3_lim, b3_lim + 31.25, 100, 101)
+    b2_baixo  = rampa_trapezoidal(b2, -1, 0, b2_lim - 37.87, b2_lim)
+    b2_normal = rampa_trapezoidal(b2, b2_lim - 37.87, b2_lim, 100, 101)
+    b3_normal = rampa_trapezoidal(b3, -1, 0, b3_lim, b3_lim + 34.75)
+    b3_alto   = rampa_trapezoidal(b3, b3_lim, b3_lim + 34.75, 100, 101)
     
     # --- Feedforward: Alerta antecipado dos Pulmoes Extremos ---
-    b1_tendencia = rampa_trapezoidal(b1, -1, 0, b1_lim, b1_lim + 17.14)
-    b4_tendencia = rampa_trapezoidal(b4, b4_lim - 15.92, b4_lim, 100, 101)
+    b1_tendencia = rampa_trapezoidal(b1, -1, 0, b1_lim, b1_lim + 10.11)
+    b4_tendencia = rampa_trapezoidal(b4, b4_lim - 35.00, b4_lim, 100, 101)
 
     # --- Inferencia: pesos e calculo da velocidade ---
     w1 = b2_baixo                       # Entrada vazia -> reduz

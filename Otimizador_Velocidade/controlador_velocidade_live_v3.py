@@ -10,21 +10,21 @@ def rampa_trapezoidal(x, a, b, c, d):
     return 0.0
 
 class ControladorVelocidadeEnchedoraV3:
-    def __init__(self, velocidade_nominal=45000, min_modulacao=0.500, max_modulacao=1.0):
+    def __init__(self, velocidade_nominal=60000, min_modulacao=0.607, max_modulacao=1.0):
         self.velocidade_nominal = velocidade_nominal
         self.min_modulacao = min_modulacao
         self.max_modulacao = max_modulacao
         
         # Parâmetros hardcoded (raw) otimizados
-        self.b1_lim = 15.71
-        self.b2_lim = 26.75
-        self.b3_lim = 72.51
-        self.b4_lim = 89.99
-        self.rampa_b2 = 40.00
-        self.rampa_b3 = 31.25
-        self.antecip_b1 = 17.14
-        self.antecip_b4 = 15.92
-        self.fator_reducao_otimizado = 0.500
+        self.b1_lim = 13.68
+        self.b2_lim = 32.62
+        self.b3_lim = 50.67
+        self.b4_lim = 71.26
+        self.rampa_b2 = 37.87
+        self.rampa_b3 = 34.75
+        self.antecip_b1 = 10.11
+        self.antecip_b4 = 35.00
+        self.fator_reducao_otimizado = 0.607
         
         self.vel_maxima = self.velocidade_nominal * self.max_modulacao
         self.vel_reduzida = self.velocidade_nominal * self.fator_reducao_otimizado
