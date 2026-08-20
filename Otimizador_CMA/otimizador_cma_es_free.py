@@ -595,8 +595,8 @@ ganho_percentual = (ganho_garrafas / producao_real_historica * 100) if producao_
 
 # Contabilização real das paradas simuladas (quando a velocidade simulada é de fato zero)
 vel_sim_arr = np.array(vel_simulada)
-sim_stops_buffer = int(((vel_sim_arr == 0.0) & ((b2_hist <= 15.0) | (b3_hist >= 85.0))).sum())
-sim_stops_external = int(((vel_sim_arr == 0.0) & (b2_hist > 15.0) & (b3_hist < 85.0)).sum())
+sim_stops_buffer = int(((vel_sim_arr == 0.0) & ((b2_hist <= LIMITE_PARADA_FALTA) | (b3_hist >= LIMITE_PARADA_ACUMULO))).sum())
+sim_stops_external = int(((vel_sim_arr == 0.0) & (b2_hist > LIMITE_PARADA_FALTA) & (b3_hist < LIMITE_PARADA_ACUMULO)).sum())
 
 # Contabilização de amostras em nível crítico de buffer onde a parada foi evitada reduzindo a velocidade
 criticos_evitados = int(((df[COL_B2_UIP_ECH] <= 2.0) | (df[COL_B3_ECH_PZ] >= 99.0)).sum())
