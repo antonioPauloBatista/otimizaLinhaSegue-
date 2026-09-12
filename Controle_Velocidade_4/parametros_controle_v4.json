@@ -1,0 +1,16 @@
+{
+    "b1_lim": 24.0,
+    "b2_lim": 31.47,
+    "b3_lim": 69.24,
+    "b4_lim": 70.15,
+    "rampa_b2": 19.25,
+    "rampa_b3": 18.48,
+    "antecipacao_b1": 21.93,
+    "antecipacao_b4": 16.5,
+    "fator_reducao": 0.892,
+    "peso_retomada_tendencia": 0.1,
+    "fator_sprint": 1.01,
+    "max_rampa_cph_passo": 3000.0,
+    "alpha_ewma": 0.65,
+    "velocidade_nominal_calculada": 60000
+}

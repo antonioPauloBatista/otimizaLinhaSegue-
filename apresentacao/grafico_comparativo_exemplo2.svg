@@ -1,0 +1,85 @@
+<svg width="1000" height="520" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Background Supply Transformation -->
+  <rect width="100%" height="100%" fill="#000000" rx="10" />
+
+  <!-- Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff">Exemplo 2: Comparativo de Desempenho — Linha com Alta Instabilidade de Buffer</text>
+  <text x="30" y="60" font-family="Arial, sans-serif" font-size="12" fill="#d99200" font-weight="bold">Supressão Máxima de Microparadas &amp; Recuperação da Capacidade Fabril</text>
+  <line x1="30" y1="74" x2="970" y2="74" stroke="#222222" stroke-width="1" />
+
+  <!-- KPI HIGHLIGHT CARDS (TOP RIGHT) -->
+  <g transform="translate(560, 20)">
+    <!-- Production Gain Badge -->
+    <rect x="0" y="0" width="190" height="46" fill="#14532d" stroke="#16a34a" stroke-width="1.5" rx="6" />
+    <text x="95" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#ffffff">+45,74%</text>
+    <text x="95" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#86efac">GANHO DE PRODUÇÃO LÍQUIDA</text>
+
+    <!-- Stop Reduction Badge -->
+    <rect x="205" y="0" width="195" height="46" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5" rx="6" />
+    <text x="302" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#06b6d4">-32,05%</text>
+    <text x="302" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#38bdf8">REDUÇÃO DE PARADAS BRUSCAS</text>
+  </g>
+
+  <!-- Y AXIS & GRID -->
+  <g font-family="Arial, sans-serif" font-size="11" fill="#888888">
+    <text x="65" y="115" text-anchor="end">1.200 CPH</text>
+    <line x1="75" y1="110" x2="960" y2="110" stroke="#222222" stroke-dasharray="4" />
+    
+    <text x="65" y="180" text-anchor="end">900 CPH</text>
+    <line x1="75" y1="175" x2="960" y2="175" stroke="#222222" stroke-dasharray="4" />
+    
+    <text x="65" y="245" text-anchor="end">600 CPH</text>
+    <line x1="75" y1="240" x2="960" y2="240" stroke="#222222" stroke-dasharray="4" />
+
+    <text x="65" y="310" text-anchor="end">300 CPH</text>
+    <line x1="75" y1="305" x2="960" y2="305" stroke="#222222" stroke-dasharray="4" />
+
+    <text x="65" y="375" text-anchor="end">0 (Parada)</text>
+    <line x1="75" y1="370" x2="960" y2="370" stroke="#444444" stroke-width="1.5" />
+  </g>
+
+  <!-- X AXIS TIMELINE LABELS -->
+  <g font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa" text-anchor="middle">
+    <text x="120" y="390">Dia 1 - 08:00</text>
+    <text x="260" y="390">Dia 1 - 12:00</text>
+    <text x="400" y="390">Dia 1 - 16:00</text>
+    <text x="540" y="390">Dia 1 - 20:00</text>
+    <text x="680" y="390">Dia 2 - 00:00</text>
+    <text x="820" y="390">Dia 2 - 04:00</text>
+    <text x="940" y="390">Dia 2 - 08:00</text>
+  </g>
+
+  <!-- LEGEND -->
+  <g transform="translate(75, 415)">
+    <!-- Real Line -->
+    <line x1="0" y1="10" x2="30" y2="10" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4" />
+    <text x="38" y="14" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">Histórico Real da Fábrica (Alta Oscilação e 15.636 Paradas)</text>
+
+    <!-- Optimized Line -->
+    <line x1="450" y1="10" x2="480" y2="10" stroke="#06b6d4" stroke-width="3.5" />
+    <text x="488" y="14" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#06b6d4">Operação Otimizada (Supressão de Paradas - 10.625 Paradas)</text>
+  </g>
+
+  <!-- GRAPH LINES DATA -->
+  <!-- 1. Real Speed (Red Dashed) multiple stops -->
+  <path d="M 120,200 L 160,370 L 190,370 L 220,180 L 280,370 L 320,370 L 350,170 L 410,370 L 440,370 L 480,180 L 560,370 L 600,370 L 640,170 L 720,370 L 760,370 L 800,180 L 880,370 L 910,370 L 940,170" 
+        fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4,3" opacity="0.8" />
+
+  <!-- 2. Optimized Speed (Cyan Solid) continuous flow -->
+  <path d="M 120,170 L 160,185 L 190,185 L 220,165 L 280,180 L 320,180 L 350,160 L 410,175 L 440,175 L 480,165 L 560,180 L 600,180 L 640,160 L 720,175 L 760,175 L 800,165 L 880,180 L 910,180 L 940,160" 
+        fill="none" stroke="#06b6d4" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- HIGHLIGHT CALLOUT: SUPRESSÃO DE 5.011 PARADAS -->
+  <g transform="translate(380, 260)">
+    <rect x="0" y="0" width="240" height="48" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5" rx="6" />
+    <text x="120" y="20" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#06b6d4">⚡ SUPRESSÃO DE 5.011 PARADAS</text>
+    <text x="120" y="36" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#ffffff">Redução de -32,05% no Tempo de Indisponibilidade</text>
+  </g>
+
+  <!-- SUMMARY PANEL BOTTOM -->
+  <g transform="translate(30, 445)">
+    <rect x="0" y="0" width="940" height="60" fill="#0f172a" stroke="#334155" rx="6" />
+    <text x="20" y="24" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#ffffff">RESUMO DO EXEMPLO 2:</text>
+    <text x="20" y="44" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">Em linhas com severa instabilidade de esteira, a modulação inteligente de velocidade converteu tempo de parada em produção contínua, alcançando <tspan font-weight="bold" fill="#16a34a">+45,74% de volume</tspan> e <tspan font-weight="bold" fill="#06b6d4">-32,05% de redução de paradas</tspan>.</text>
+  </g>
+</svg>

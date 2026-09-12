@@ -6,11 +6,17 @@
   "Col_Buffer_Pos_Saida": "accumulation_percentage_post_pasteurizer_null",
   "COL_V_Antes_Entrada": "speed_actual_cph_null_first_upstream_machine_1",
   "COL_V_Entrada": "speed_actual_cph_null_eci_1",
-  "COL_V_ECH": "speed_actual_cph_null_eci_1",
+  "COL_V_ECH": "speed_actual_cph_null_filler_1",
   "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
-  "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_first_downstream_machine_1",
-  "Velocidade_Nominal_ECH": 72000,
+  "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_first_downstream_machine_1,speed_actual_cph_null_first_downstream_machine_2",
+  "Velocidade_Nominal_ECH": 60000,
   "Limiar_Velocidade_Manutencao": 30000,
   "Filtro_Minutos_Parada_Longa": 10,
-  "Fator_Sobremarcha": 1.01
+  "Fator_Sobremarcha": 1.02,
+  "Min_Modulacao": 0.75,
+  "Max_Modulacao": 1.00,
+  "Max_Rampa_CPH_Passo": 3000.0,
+  "Banda_Morta_CPH": 300.0,
+  "Alpha_Filtro_Buffer": 0.65,
+  "Janela_Mediana_Buffer": 3
 }

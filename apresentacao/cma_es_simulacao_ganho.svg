@@ -1,0 +1,83 @@
+<svg width="1000" height="600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Supply Transformation Background -->
+  <rect width="100%" height="100%" fill="#000000" rx="10" />
+
+  <!-- Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#ffffff">Como o Gêmeo Digital Simula e Calcula o Ganho</text>
+  <text x="30" y="62" font-family="Arial, sans-serif" font-size="13" fill="#d99200" font-weight="bold">Avaliação de Ocorrência Histórica (Buffer + Velocidade) vs Proposta do Algoritmo</text>
+  <line x1="30" y1="76" x2="970" y2="76" stroke="#222222" stroke-width="1" />
+
+  <!-- GRID DE 4 ETAPAS DA SIMULAÇÃO DE GANHO -->
+  
+  <!-- ETAPA 1: LEITURA DO ESTADO -->
+  <g transform="translate(30, 95)">
+    <rect x="0" y="0" width="455" height="210" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5" rx="8" />
+    <rect x="15" y="15" width="28" height="28" fill="#06b6d4" rx="4" />
+    <text x="29" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000000">1</text>
+    <text x="52" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#06b6d4">Captura do Estado (Buffer + Velocidade)</text>
+    
+    <text x="20" y="62" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">A cada segundo da simulação, o algoritmo lê:</text>
+    
+    <!-- State Box Inside -->
+    <rect x="20" y="75" width="415" height="115" fill="#1e293b" stroke="#334155" rx="6" />
+    <text x="35" y="100" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">📊 <tspan font-weight="bold">Acúmulo do Buffer (B2):</tspan> 24% (Próximo do limite)</text>
+    <text x="35" y="125" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">⚡ <tspan font-weight="bold">Velocidade Atual (ECH):</tspan> 52.700 CPH (Nominal Máxima)</text>
+    <text x="35" y="150" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">🔎 <tspan font-weight="bold">Busca no Banco:</tspan> Essa exata condição ocorreu no passado?</text>
+    <text x="35" y="172" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#06b6d4">➔ SIM! Registrado no dataset histórico da fábrica.</text>
+  </g>
+
+  <!-- ETAPA 2: COMPARAÇÃO HISTÓRICO VS OTIMIZADOR -->
+  <g transform="translate(515, 95)">
+    <rect x="0" y="0" width="455" height="210" fill="#0f172a" stroke="#d99200" stroke-width="1.5" rx="8" />
+    <rect x="15" y="15" width="28" height="28" fill="#d99200" rx="4" />
+    <text x="29" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000000">2</text>
+    <text x="52" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#d99200">Comparação: O Que Aconteceu vs Proposta IA</text>
+
+    <!-- Sub-box Real -->
+    <rect x="20" y="55" width="415" height="65" fill="#1c1917" stroke="#ef4444" stroke-width="1" rx="5" />
+    <text x="30" y="75" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#ef4444">❌ O QUE ACONTECEU NO HISTÓRICO REAL:</text>
+    <text x="30" y="95" font-family="Arial, sans-serif" font-size="11" fill="#fca5a5">Operador manteve 52.700 CPH ➔ Buffer B2 esvaziou (0%) ➔ PARADA BRUSCA por falta (15 min sem produzir!).</text>
+
+    <!-- Sub-box Algoritmo -->
+    <rect x="20" y="130" width="415" height="65" fill="#1c1917" stroke="#16a34a" stroke-width="1" rx="5" />
+    <text x="30" y="150" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#16a34a">✅ O QUE O OTIMIZADOR PROPÕE (Gatilho em 24%):</text>
+    <text x="30" y="170" font-family="Arial, sans-serif" font-size="11" fill="#86efac">Algoritmo reduz para 38.000 CPH ➔ Dá tempo do buffer B2 encher ➔ PARADA EVITADA! Enchedora continua rodando.</text>
+  </g>
+
+  <!-- ETAPA 3: SIMULAÇÃO SEGUNDO A SEGUNDO -->
+  <g transform="translate(30, 325)">
+    <rect x="0" y="0" width="455" height="240" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5" rx="8" />
+    <rect x="15" y="15" width="28" height="28" fill="#38bdf8" rx="4" />
+    <text x="29" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000000">3</text>
+    <text x="52" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#38bdf8">Simulação Contínua do Gêmeo Digital</text>
+    
+    <text x="20" y="62" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">O motor de simulação roda linha por linha do dataset:</text>
+    
+    <rect x="20" y="75" width="415" height="145" fill="#1e293b" stroke="#334155" rx="6" />
+    <text x="35" y="98" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">• <tspan font-weight="bold">Verifica Máscara de Parada Longa:</tspan> Não tenta otimizar paradas externas inegociáveis (>10 min de manutenção).</text>
+    <text x="35" y="125" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">• <tspan font-weight="bold">Penalização por Trancos:</tspan> Descarta combinações de gatilhos que alteram a velocidade muitas vezes por hora.</text>
+    <text x="35" y="152" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">• <tspan font-weight="bold">Controle de Histerese:</tspan> Garante tempo mínimo antes de mudar a rampa da máquina.</text>
+    <text x="35" y="179" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#38bdf8">➔ Soma de Produção Líquida Simulada (Garrafas Produzidas).</text>
+  </g>
+
+  <!-- ETAPA 4: CÁLCULO DO GANHO DE PRODUÇÃO (DELTA BENEFÍCIO) -->
+  <g transform="translate(515, 325)">
+    <rect x="0" y="0" width="455" height="240" fill="#0f172a" stroke="#16a34a" stroke-width="2" rx="8" />
+    <rect x="15" y="15" width="28" height="28" fill="#16a34a" rx="4" />
+    <text x="29" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#ffffff">4</text>
+    <text x="52" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#16a34a">Cálculo do Ganho de Benefício (Δ OEE)</text>
+
+    <!-- KPI Box -->
+    <rect x="20" y="55" width="415" height="165" fill="#14532d" stroke="#22c55e" stroke-width="1.5" rx="6" />
+    <text x="35" y="80" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#ffffff">🏆 FÓRMULA DO GANHO DE BENEFÍCIO:</text>
+
+    <text x="35" y="105" font-family="Arial, sans-serif" font-size="12" fill="#86efac"><tspan font-weight="bold">Produção Real Histórica:</tspan> 42.100 Garrafas/Hora</text>
+    <text x="35" y="125" font-family="Arial, sans-serif" font-size="12" fill="#86efac"><tspan font-weight="bold">Produção Otimizada Simulada:</tspan> 47.350 Garrafas/Hora</text>
+
+    <line x1="35" y1="135" x2="420" y2="135" stroke="#22c55e" stroke-width="1" stroke-dasharray="4" />
+
+    <text x="35" y="160" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#ffffff">🚀 GANHO REALIZADO = + 5.250 Garrafas/Hora</text>
+    <text x="35" y="180" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#facc15">✓ 8 Paradas Bruscas Evitadas | + 12,4% de Ganho de OEE Líquido</text>
+    <text x="35" y="200" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">O algoritmo escolhe os 8 parâmetros com este maior resultado de ganho!</text>
+  </g>
+</svg>

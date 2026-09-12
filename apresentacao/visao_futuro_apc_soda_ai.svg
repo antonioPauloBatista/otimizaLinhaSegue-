@@ -1,0 +1,76 @@
+<svg width="1020" height="540" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Supply Transformation Background -->
+  <rect width="100%" height="100%" fill="#000000" rx="12" />
+
+  <!-- Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#ffffff">Evolução do Produto: Controle APC &amp; Integração com Soda ETL</text>
+  <text x="30" y="62" font-family="Arial, sans-serif" font-size="13" fill="#d99200" font-weight="bold">Visão de Futuro — Da Aplicação Local sem Governança para Gestão Centralizada na Plataforma Soda ETL</text>
+  <line x1="30" y1="76" x2="990" y2="76" stroke="#222222" stroke-width="1" />
+
+  <!-- GRID DE 3 COLUNAS -->
+
+  <!-- COLUNA 1: ESTADO ATUAL (GATILHOS DISCRETOS + DEPLOY LOCAL) -->
+  <g transform="translate(30, 95)">
+    <rect x="0" y="0" width="300" height="310" fill="#0f172a" stroke="#ef4444" stroke-width="1.5" rx="10" />
+    <rect x="15" y="15" width="270" height="35" fill="#1c1917" rx="6" />
+    <text x="150" y="38" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ef4444">⚠️ APLICAÇÃO LOCAL ISOLADA</text>
+
+    <!-- Visual Box Deploy Local -->
+    <rect x="15" y="65" width="270" height="110" fill="#18181b" stroke="#334155" rx="6" />
+    <text x="25" y="85" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#ef4444">Dores da Operação Local (Cervejaria):</text>
+    <text x="25" y="105" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">• Aplicação local isolada em cada planta.</text>
+    <text x="25" y="125" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">• Sem gestão centralizada de atualizações.</text>
+    <text x="25" y="145" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">• Falta de rotinas automáticas de backup.</text>
+    <text x="25" y="165" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">• Descompasso de versões entre plantas.</text>
+
+    <text x="25" y="200" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">Controle de Velocidade Atual:</text>
+    <text x="25" y="224" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Regras discretas por gatilhos (85%, 95%).</text>
+    <text x="25" y="248" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Rampas bruscas com choque mecânico.</text>
+    <text x="25" y="272" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Elevado desgaste mecânico das esteiras.</text>
+  </g>
+
+  <!-- COLUNA 2: PASSO DE EVOLUÇÃO (CONTROLE APC CONTÍNUO) -->
+  <g transform="translate(360, 95)">
+    <rect x="0" y="0" width="300" height="310" fill="#0f172a" stroke="#06b6d4" stroke-width="2" rx="10" />
+    <rect x="15" y="15" width="270" height="35" fill="#1c1917" rx="6" />
+    <text x="150" y="38" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#06b6d4">🚀 ADVANCED PROCESS CONTROL (APC)</text>
+
+    <!-- Graph smooth continuous curve -->
+    <rect x="15" y="65" width="270" height="110" fill="#18181b" stroke="#334155" rx="6" />
+    <text x="25" y="85" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#06b6d4">Modulação Contínua Preditiva (PLC):</text>
+    <path d="M 30,135 Q 80,95 130,130 T 230,125 Q 250,115 260,120" fill="none" stroke="#06b6d4" stroke-width="3" />
+
+    <text x="25" y="200" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">Melhoria de Processo:</text>
+    <text x="25" y="224" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Rampa contínua e suave em real-time.</text>
+    <text x="25" y="248" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Eliminação de trancos e degraus.</text>
+    <text x="25" y="272" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Proteção ativa dos 4 buffers da esteira.</text>
+  </g>
+
+  <!-- COLUNA 3: VISÃO DE FUTURO (INTEGRAÇÃO SODA ETL) -->
+  <g transform="translate(690, 95)">
+    <rect x="0" y="0" width="300" height="310" fill="#0f172a" stroke="#d99200" stroke-width="2" rx="10" />
+    <rect x="15" y="15" width="270" height="35" fill="#1c1917" rx="6" />
+    <text x="150" y="38" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#d99200">🌐 INTEGRAÇÃO COM SODA ETL</text>
+
+    <!-- Soda ETL Enterprise Box -->
+    <rect x="15" y="65" width="270" height="110" fill="#18181b" stroke="#d99200" stroke-width="1" rx="6" />
+    <text x="25" y="85" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#d99200">Plataforma Centralizada Soda ETL:</text>
+    <text x="25" y="105" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">✓ Gestão Global de Atualizações (CI/CD).</text>
+    <text x="25" y="123" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">✓ Rotinas Automáticas de Backup &amp; Restore.</text>
+    <text x="25" y="141" font-family="Arial, sans-serif" font-size="10" fill="#ffffff">✓ Padronização de Versões em TODAS as plantas.</text>
+    <text x="25" y="159" font-family="Arial, sans-serif" font-size="10" fill="#06b6d4">✓ Pipeline Contínuo de Dados Integrado.</text>
+
+    <text x="25" y="200" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#ffffff">Ganhos de Governança:</text>
+    <text x="25" y="224" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Fim da dependência de suporte local.</text>
+    <text x="25" y="248" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Implantação remota sem downtime.</text>
+    <text x="25" y="272" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">• Segurança e compliance corporativo.</text>
+  </g>
+
+  <!-- PANEL FOOTER (ARQUITETURA DE VALOR) -->
+  <g transform="translate(30, 425)">
+    <rect x="0" y="0" width="960" height="85" fill="#14532d" stroke="#16a34a" stroke-width="1.5" rx="8" />
+    <text x="20" y="28" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">💡 SÍNTESE DA ARQUITETURA DE FUTURO (APC + SODA ETL)</text>
+    <text x="20" y="50" font-family="Arial, sans-serif" font-size="12" fill="#86efac">1. <tspan font-weight="bold" fill="#ffffff">Controle APC:</tspan> Elimina os degraus de gatilhos, provendo modulação contínua e suave de velocidade na esteira.</text>
+    <text x="20" y="70" font-family="Arial, sans-serif" font-size="12" fill="#86efac">2. <tspan font-weight="bold" fill="#ffffff">Soda ETL:</tspan> Elimina a aplicação local isolada sem gestão, centralizando atualizações, backups e governança corporativa.</text>
+  </g>
+</svg>

@@ -1,0 +1,55 @@
+<svg width="600" height="600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Background -->
+  <rect width="100%" height="100%" fill="#000000" rx="16" />
+
+  <!-- Outer Golden Border -->
+  <rect x="10" y="10" width="580" height="580" fill="none" stroke="#d99200" stroke-width="2" rx="12" />
+
+  <!-- Header Badge -->
+  <rect x="30" y="25" width="540" height="42" fill="#0f172a" stroke="#334155" stroke-width="1" rx="8" />
+  <text x="300" y="52" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#ffffff">RELATÓRIO FINAL: CONFIGURAÇÃO DA LINHA</text>
+
+  <!-- KPI BOX 1: PRODUCTION GAIN (+11,39%) -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="540" height="100" fill="#14532d" stroke="#16a34a" stroke-width="2" rx="8" />
+    <text x="20" y="28" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#86efac">GANHO DE PRODUÇÃO ESTIMADO (OEE)</text>
+    <text x="20" y="66" font-family="Arial, sans-serif" font-size="34" font-weight="bold" fill="#ffffff">+11,39%</text>
+    <text x="220" y="58" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#86efac">+1.833.085 UNIDADES</text>
+    <text x="220" y="78" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">Produção Otimizada: 17.921.405 un</text>
+  </g>
+
+  <!-- KPI BOX 2: STOPS REDUCTION (-21,8%) -->
+  <g transform="translate(30, 185)">
+    <rect x="0" y="0" width="540" height="100" fill="#0f172a" stroke="#06b6d4" stroke-width="2" rx="8" />
+    <text x="20" y="28" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#38bdf8">PARADAS DE BUFFER EVITADAS (FALTA / ACÚMULO)</text>
+    <text x="20" y="66" font-family="Arial, sans-serif" font-size="34" font-weight="bold" fill="#ffffff">-21,8%</text>
+    <text x="220" y="58" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#06b6d4">2.640 PARADAS EVITADAS</text>
+    <text x="220" y="78" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">11.125 amostras mantidas em marcha reduzida</text>
+  </g>
+
+  <!-- PLC SETPOINTS SUMMARY -->
+  <g transform="translate(30, 295)">
+    <rect x="0" y="0" width="540" height="230" fill="#18181b" stroke="#d99200" stroke-width="1.5" rx="8" />
+    <text x="20" y="25" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#d99200">PARÂMETROS SINTONIZADOS PARA O CLP (PLC)</text>
+
+    <!-- Speed modes -->
+    <text x="20" y="50" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">• <tspan font-weight="bold">SPRINT (101%): 42.420 CPH</tspan> (B1&gt;35% | B2&gt;49,2% | B3&lt;65% | B4&lt;60%)</text>
+    <text x="20" y="72" font-family="Arial, sans-serif" font-size="11" fill="#ffffff">• <tspan font-weight="bold">ALTA (100%): 42.000 CPH</tspan> (B1&gt;30% | B2&gt;44,2% | B3&lt;70% | B4&lt;65%)</text>
+
+    <!-- Entrada rules -->
+    <text x="20" y="102" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#06b6d4">PROTEÇÃO CONTRA FALTA (CADEIA ENTRADA):</text>
+    <text x="20" y="122" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">  ↳ Falta Extrema B1 (&lt;20%): Reduz ECH ➔ 95% (39.900 CPH)</text>
+    <text x="20" y="140" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">  ↳ Falta Crítica B2 (&lt;34,2%): Reduz ECH ➔ 85% (35.700 CPH)</text>
+
+    <!-- Saída rules -->
+    <text x="20" y="170" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#d99200">PROTEÇÃO CONTRA ACÚMULO (CADEIA SAÍDA):</text>
+    <text x="20" y="190" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">  ↳ Acúmulo Crítico B3 (&gt;80%): Reduz ECH ➔ 85% (35.700 CPH)</text>
+    <text x="20" y="208" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">  ↳ Acúmulo Extremo B4 (&gt;80%): Reduz ECH ➔ 95% (39.900 CPH)</text>
+  </g>
+
+  <!-- FOOTER -->
+  <g transform="translate(30, 535)">
+    <rect x="0" y="0" width="540" height="40" fill="#0f172a" stroke="#222222" rx="6" />
+    <text x="270" y="25" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#aaaaaa">SUPPLY TRANSFORMATION | OTIMIZADOR SEGUE 2026</text>
+  </g>
+</svg>

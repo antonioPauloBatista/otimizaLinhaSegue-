@@ -1,0 +1,42 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 41122167 unidades.
+➔ Produção Simulada Otimizada : 43989393 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +2867225 unidades (+6.97%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 2298 amostras
+   ↳ Na simulação Otimizada : 1993 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : 305 amostras (13.3% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 124 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 11354 amostras
+   ↳ Na simulação Otimizada : 11354 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (60000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 30.3%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 53.2%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 59.6%
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+
+ 1. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 20.3% → Ação: Enchedora → 85.0% (51000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 30.3%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 63.2% → Ação: Enchedora → 85.0% (51000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 53.2%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 74.6% → Ação: Enchedora → 95.0% (57000 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 59.6%
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.

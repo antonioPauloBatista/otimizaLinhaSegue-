@@ -1,0 +1,92 @@
+<svg width="1000" height="520" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Background Supply Transformation -->
+  <rect width="100%" height="100%" fill="#000000" rx="10" />
+
+  <!-- Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff">Exemplo 1: Comparativo de Desempenho — Linha Operacional Contínua</text>
+  <text x="30" y="60" font-family="Arial, sans-serif" font-size="12" fill="#d99200" font-weight="bold">Otimização de Rampa de Velocidade &amp; Estabilização dos Buffers</text>
+  <line x1="30" y1="74" x2="970" y2="74" stroke="#222222" stroke-width="1" />
+
+  <!-- KPI HIGHLIGHT CARDS (TOP RIGHT) -->
+  <g transform="translate(560, 20)">
+    <!-- Production Gain Badge -->
+    <rect x="0" y="0" width="190" height="46" fill="#14532d" stroke="#16a34a" stroke-width="1.5" rx="6" />
+    <text x="95" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#ffffff">+11,39%</text>
+    <text x="95" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#86efac">GANHO DE PRODUÇÃO LÍQUIDA</text>
+
+    <!-- Stop Reduction Badge -->
+    <rect x="205" y="0" width="195" height="46" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5" rx="6" />
+    <text x="302" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#06b6d4">-8,11%</text>
+    <text x="302" y="36" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#38bdf8">REDUÇÃO DE PARADAS BRUSCAS</text>
+  </g>
+
+  <!-- Y AXIS & GRID -->
+  <g font-family="Arial, sans-serif" font-size="11" fill="#888888">
+    <text x="65" y="115" text-anchor="end">60.000</text>
+    <line x1="75" y1="110" x2="960" y2="110" stroke="#222222" stroke-dasharray="4" />
+    
+    <text x="65" y="180" text-anchor="end">45.000</text>
+    <line x1="75" y1="175" x2="960" y2="175" stroke="#222222" stroke-dasharray="4" />
+    
+    <text x="65" y="245" text-anchor="end">30.000</text>
+    <line x1="75" y1="240" x2="960" y2="240" stroke="#222222" stroke-dasharray="4" />
+
+    <text x="65" y="310" text-anchor="end">15.000</text>
+    <line x1="75" y1="305" x2="960" y2="305" stroke="#222222" stroke-dasharray="4" />
+
+    <text x="65" y="375" text-anchor="end">0 (Parada)</text>
+    <line x1="75" y1="370" x2="960" y2="370" stroke="#444444" stroke-width="1.5" />
+  </g>
+
+  <!-- X AXIS TIMELINE LABELS -->
+  <g font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa" text-anchor="middle">
+    <text x="120" y="390">10:00</text>
+    <text x="260" y="390">11:00</text>
+    <text x="400" y="390">12:00 (Risco Falta)</text>
+    <text x="540" y="390">13:00</text>
+    <text x="680" y="390">14:00 (Risco Acúmulo)</text>
+    <text x="820" y="390">15:00</text>
+    <text x="940" y="390">16:00</text>
+  </g>
+
+  <!-- LEGEND -->
+  <g transform="translate(75, 415)">
+    <!-- Real Line -->
+    <line x1="0" y1="10" x2="30" y2="10" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4" />
+    <text x="38" y="14" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">Histórico Real da Fábrica (Operação Manual com Paradas Bruscas)</text>
+
+    <!-- Optimized Line -->
+    <line x1="450" y1="10" x2="480" y2="10" stroke="#d99200" stroke-width="3.5" />
+    <text x="488" y="14" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#d99200">Operação Otimizada (Curva Suave Contínua)</text>
+  </g>
+
+  <!-- GRAPH LINES DATA -->
+  <!-- 1. Real Speed (Red Dashed) with sharp drop stops -->
+  <path d="M 120,135 L 200,135 L 260,135 L 320,370 L 370,370 L 400,135 L 540,135 L 620,370 L 670,370 L 700,135 L 820,135 L 940,135" 
+        fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="5,4" opacity="0.85" />
+
+  <!-- 2. Optimized Speed (Gold Solid) avoiding stops -->
+  <path d="M 120,140 L 200,140 L 260,145 L 320,185 L 370,185 L 400,145 L 540,140 L 620,180 L 670,180 L 700,145 L 820,140 L 940,140" 
+        fill="none" stroke="#d99200" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- HIGHLIGHT CALLOUT 1: Parada Evitada 1 -->
+  <g transform="translate(310, 280)">
+    <rect x="0" y="0" width="130" height="40" fill="#14532d" stroke="#22c55e" stroke-width="1" rx="4" />
+    <text x="65" y="18" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#ffffff">✓ PARADA EVITADA</text>
+    <text x="65" y="32" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#86efac">Velocidade: 38.000 CPH</text>
+  </g>
+
+  <!-- HIGHLIGHT CALLOUT 2: Parada Evitada 2 -->
+  <g transform="translate(610, 280)">
+    <rect x="0" y="0" width="130" height="40" fill="#14532d" stroke="#22c55e" stroke-width="1" rx="4" />
+    <text x="65" y="18" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#ffffff">✓ PARADA EVITADA</text>
+    <text x="65" y="32" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#86efac">Velocidade: 39.500 CPH</text>
+  </g>
+
+  <!-- SUMMARY PANEL BOTTOM -->
+  <g transform="translate(30, 445)">
+    <rect x="0" y="0" width="940" height="60" fill="#0f172a" stroke="#334155" rx="6" />
+    <text x="20" y="24" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#ffffff">RESUMO DO EXEMPLO 1:</text>
+    <text x="20" y="44" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">Ao suavizar a rampa nos momentos de variação do buffer, o otimizador evitou paradas por desabastecimento, gerando <tspan font-weight="bold" fill="#16a34a">+11,39% de volume líquido</tspan> e reduzindo em <tspan font-weight="bold" fill="#06b6d4">8,11% as microparadas de soco</tspan>.</text>
+  </g>
+</svg>

@@ -1,0 +1,47 @@
+<svg width="600" height="600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Background -->
+  <rect width="100%" height="100%" fill="#000000" rx="16" />
+
+  <!-- Outer Golden Border -->
+  <rect x="12" y="12" width="576" height="576" fill="none" stroke="#d99200" stroke-width="2" rx="12" />
+
+  <!-- Header Badge -->
+  <rect x="40" y="35" width="520" height="45" fill="#0f172a" stroke="#334155" rx="8" />
+  <text x="300" y="63" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#ffffff">OTIMIZADOR SEGUE — RESULTADOS</text>
+
+  <!-- Subtitle -->
+  <text x="300" y="105" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#d99200">Relatório Oficial de Validação da Linha</text>
+
+  <!-- KPI BOX 1: PRODUCTION GAIN (+11,39%) -->
+  <g transform="translate(40, 125)">
+    <rect x="0" y="0" width="520" height="115" fill="#14532d" stroke="#16a34a" stroke-width="2" rx="10" />
+    <text x="20" y="32" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#86efac">🚀 GANHO DE PRODUÇÃO LÍQUIDA (OEE)</text>
+    <text x="20" y="72" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#ffffff">+11,39%</text>
+    <text x="240" y="70" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#86efac">+1.833.085</text>
+    <text x="240" y="90" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">unidades adicionais acumuladas</text>
+  </g>
+
+  <!-- KPI BOX 2: STOPS REDUCTION (-21.8%) -->
+  <g transform="translate(40, 255)">
+    <rect x="0" y="0" width="520" height="115" fill="#0f172a" stroke="#06b6d4" stroke-width="2" rx="10" />
+    <text x="20" y="32" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#38bdf8">⚡ REDUÇÃO DE PARADAS DE BUFFER</text>
+    <text x="20" y="72" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#ffffff">-21,8%</text>
+    <text x="240" y="70" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#06b6d4">2.640 PARADAS</text>
+    <text x="240" y="90" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">eliminadas pelo controle contínuo</text>
+  </g>
+
+  <!-- KPI BOX 3: MARCHA REDUZIDA (11.125 amostras) -->
+  <g transform="translate(40, 385)">
+    <rect x="0" y="0" width="520" height="100" fill="#18181b" stroke="#d99200" stroke-width="1.5" rx="10" />
+    <text x="20" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#fde047">🛡️ MARCHA REDUZIDA PROTETIVA</text>
+    <text x="20" y="66" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#ffffff">11.125 amostras</text>
+    <text x="260" y="64" font-family="Arial, sans-serif" font-size="12" fill="#d99200">convertidas em produção contínua</text>
+    <text x="260" y="82" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">(máquina não parou nos momentos críticos)</text>
+  </g>
+
+  <!-- FOOTER BRANDING -->
+  <g transform="translate(40, 505)">
+    <rect x="0" y="0" width="520" height="48" fill="#0f172a" stroke="#222222" rx="8" />
+    <text x="260" y="28" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#aaaaaa">SUPPLY TRANSFORMATION | OTIMIZADOR SEGUE 2026</text>
+  </g>
+</svg>

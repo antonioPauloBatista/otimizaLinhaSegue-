@@ -1,0 +1,95 @@
+<svg width="1020" height="580" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Dark Palette -->
+  <rect width="100%" height="100%" fill="#000000" rx="12" />
+
+  <!-- Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#ffffff">Arquitetura Completa do Otimizador &amp; Gêmeo Digital</text>
+  <text x="30" y="62" font-family="Arial, sans-serif" font-size="13" fill="#d99200" font-weight="bold">Mapeamento dos 4 Buffers, Resolução Dinâmica, Matriz de Busca 8D e Cálculo do Ganho</text>
+  <line x1="30" y1="76" x2="990" y2="76" stroke="#222222" stroke-width="1" />
+
+  <!-- SEÇÃO 1: MAPEAMENTO DA LINHA E RESOLUÇÃO DOS BUFFERS -->
+  <text x="30" y="102" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#aaaaaa">1. ARQUITETURA DA LINHA &amp; RESOLUÇÃO DINÂMICA DOS BUFFERS (otimizador_cma_es_free.py)</text>
+  
+  <g transform="translate(30, 115)">
+    <!-- DPL -->
+    <rect x="0" y="10" width="75" height="44" fill="#18181b" stroke="#52525b" stroke-width="1.5" rx="5" />
+    <text x="37" y="37" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">DPL</text>
+    
+    <!-- Buffer B1 -->
+    <rect x="90" y="12" width="100" height="40" fill="#1c1917" stroke="#38bdf8" stroke-width="1.5" rx="5" />
+    <text x="140" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#38bdf8">Buffer B1</text>
+    <text x="140" y="46" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#16a34a">HAS_B1 (Opcional)</text>
+
+    <!-- UIP -->
+    <rect x="205" y="10" width="75" height="44" fill="#18181b" stroke="#52525b" stroke-width="1.5" rx="5" />
+    <text x="242" y="37" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">UIP</text>
+
+    <!-- Buffer B2 -->
+    <rect x="295" y="12" width="100" height="40" fill="#1c1917" stroke="#06b6d4" stroke-width="2" rx="5" />
+    <text x="345" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#06b6d4">Buffer B2</text>
+    <text x="345" y="46" font-family="Arial, sans-serif" font-size="9" font-weight="bold" text-anchor="middle" fill="#d99200">Entrada (Obrigatório)</text>
+
+    <!-- ECH (Enchedora - HIGHLIGHT GOLD) -->
+    <rect x="410" y="0" width="140" height="64" fill="#d99200" rx="6" />
+    <text x="480" y="27" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000000">ENCHEDORA</text>
+    <text x="480" y="46" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#000000">(ECH - Gargalo)</text>
+
+    <!-- Buffer B3 -->
+    <rect x="565" y="12" width="100" height="40" fill="#1c1917" stroke="#eab308" stroke-width="2" rx="5" />
+    <text x="615" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#eab308">Buffer B3</text>
+    <text x="615" y="46" font-family="Arial, sans-serif" font-size="9" font-weight="bold" text-anchor="middle" fill="#d99200">Saída (Obrigatório)</text>
+
+    <!-- PZ -->
+    <rect x="680" y="10" width="75" height="44" fill="#18181b" stroke="#52525b" stroke-width="1.5" rx="5" />
+    <text x="717" y="37" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">PZ</text>
+
+    <!-- Buffer B4 -->
+    <rect x="770" y="12" width="100" height="40" fill="#1c1917" stroke="#38bdf8" stroke-width="1.5" rx="5" />
+    <text x="820" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#38bdf8">Buffer B4</text>
+    <text x="820" y="46" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#16a34a">HAS_B4 (Opcional)</text>
+
+    <!-- EPC -->
+    <rect x="885" y="10" width="75" height="44" fill="#18181b" stroke="#52525b" stroke-width="1.5" rx="5" />
+    <text x="922" y="37" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff">EPC</text>
+  </g>
+
+  <!-- SEÇÃO 2: A MATRIZ DE BUSCA DA INTELIGÊNCIA (8 PARÂMETROS SINTONIZADOS) -->
+  <text x="30" y="215" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#aaaaaa">2. MATRIZ DE BUSCA VETORIAL EM ESPAÇO OCTADIMENSIONAL (8D)</text>
+
+  <g transform="translate(30, 230)">
+    <!-- Box Entrada (Falta) -->
+    <rect x="0" y="0" width="465" height="150" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5" rx="8" />
+    <text x="20" y="28" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#06b6d4">🛡️ Proteção Contra Falta (Desabastecimento)</text>
+    
+    <text x="20" y="55" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">• <tspan font-weight="bold">B1 (Falta Extrema):</tspan> Gatilho % + Vel % ECH</text>
+    <text x="20" y="77" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">• <tspan font-weight="bold">B2 (Falta Crítica):</tspan> Gatilho % + Vel % ECH</text>
+    
+    <text x="20" y="106" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">Objetivo: Ajustar velocidade antes do buffer B2 esvaziar,</text>
+    <text x="20" y="124" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">evitando paradas da Enchedora por falta de garrafas.</text>
+
+    <!-- Box Saída (Acúmulo) -->
+    <rect x="495" y="0" width="465" height="150" fill="#0f172a" stroke="#eab308" stroke-width="1.5" rx="8" />
+    <text x="515" y="28" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#eab308">⚠️ Proteção Contra Acúmulo (Afogamento)</text>
+
+    <text x="515" y="55" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">• <tspan font-weight="bold">B3 (Acúmulo Crítico):</tspan> Gatilho % + Vel % ECH</text>
+    <text x="515" y="77" font-family="Arial, sans-serif" font-size="12" fill="#ffffff">• <tspan font-weight="bold">B4 (Acúmulo Extremo):</tspan> Gatilho % + Vel % ECH</text>
+    
+    <text x="515" y="106" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">Objetivo: Adequar a taxa de enchimento antes de B3/B4</text>
+    <text x="515" y="124" font-family="Arial, sans-serif" font-size="11" fill="#94a3b8">encherem, prevenindo travamento do pasteurizador.</text>
+  </g>
+
+  <!-- SEÇÃO 3: RESULTADO DO CÁLCULO DO GANHO (DELTAS DE PERFORMANCE) -->
+  <text x="30" y="415" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#aaaaaa">3. MÉTRICA DE AVALIAÇÃO DA FUNÇÃO OBJETIVO (FITNESS FUNCTION)</text>
+
+  <g transform="translate(30, 430)">
+    <rect x="0" y="0" width="960" height="115" fill="#14532d" stroke="#16a34a" stroke-width="1.5" rx="8" />
+    
+    <g transform="translate(20, 18)">
+      <text x="0" y="18" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">🏆 Função Objetivo = Maximizar Produção Líquida + Minimizar Paradas por Soco + Suavizar Rampas</text>
+      
+      <text x="0" y="44" font-family="Arial, sans-serif" font-size="12" fill="#86efac">• <tspan font-weight="bold">Produção Otimizada Simulada vs Real:</tspan> Δ Garrafas/Hora (Ganho direto de capacidade sem investimento de capital).</text>
+      <text x="0" y="64" font-family="Arial, sans-serif" font-size="12" fill="#86efac">• <tspan font-weight="bold">Eliminação de Microparadas:</tspan> Identifica paradas causadas por oscilação de buffer e sintoniza a velocidade para suprimi-las.</text>
+      <text x="0" y="84" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#facc15">✓ O algoritmo entrega os 8 parâmetros sintonizados que geram o MAIOR GANHO LÍQUIDO comprovado.</text>
+    </g>
+  </g>
+</svg>

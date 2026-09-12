@@ -1,0 +1,39 @@
+===========================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE V4: BALANÇO + MOTIVOS   
+===========================================================================
+➔ Produção Real Registrada no Histórico : 7,511,668 unidades.
+➔ Produção Simulada Otimizada V4       : 11,043,208 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO (V4)       : +3,531,540 unidades (+47.01%)
+
+[MÉTRICAS DE PARADAS E ESTABILIDADE DE PROCESSO]
+➔ Amostras em Risco de Soco Mecânico no Histórico : 6745
+➔ Amostras em Risco na Simulação Otimizada V4      : 7
+➔ Amostras Críticas Evitadas                       : 6738 (99.9% de melhoria)
+➔ Tempo Extra de Uptime Recuperado                : 56h 9min
+
+[DISTRIBUIÇÃO DOS MOTIVOS DE OPERAÇÃO NO HISTÓRICO]
+   ↳ [ID 10 - FALTA_ENTRADA_B2          ]:   7627 amostras ( 22.1%) | Falta de Garrafas no Buffer de Entrada (B2 ECI-Enchedora)
+   ↳ [ID 99 - PARADA_EXTERNA_MANUTENCAO ]:   5747 amostras ( 16.6%) | Parada Externa Longa / Manutenção / Falha Elétrica ou Mecânica
+   ↳ [ID 90 - PARADA_SEGURANCA_BUFFER   ]:   5195 amostras ( 15.0%) | Parada de Segurança do CLP por Zona Crítica de Buffer (B2 < 10% ou B3 > 90%)
+   ↳ [ID 20 - ACUMULO_SAIDA_B3          ]:   4262 amostras ( 12.3%) | Acúmulo de Garrafas no Buffer de Saída (B3 Enchedora-Pasteurizador)
+   ↳ [ID  0 - NORMAL_FULL               ]:   2879 amostras (  8.3%) | Velocidade Nominal (100%) - Fluxo Normal
+   ↳ [ID 80 - MAQUINA_JUSANTE_LENTA     ]:   2620 amostras (  7.6%) | Balanço de Massa: Máquina a Jusante (Pasteurizador) operando em velocidade reduzida
+   ↳ [ID 25 - RETOMADA_ACELERANDO_JUSANTE]:   2435 amostras (  7.0%) | Saída com Acúmulo, mas Máquina a Jusante Acelerando (Retomada Sincronizada)
+   ↳ [ID 30 - CONFLITO_ENTRADA_SAIDA    ]:   2424 amostras (  7.0%) | Duplo Conflito: Falta na Entrada (B2) e Acúmulo na Saída (B3) simultâneos
+   ↳ [ID  1 - SPRINT_SOBREVELOCIDADE    ]:    455 amostras (  1.3%) | Sobrevelocidade / Sprint (> 100%) - Linha Desimpedida
+   ↳ [ID 70 - MAQUINA_MONTANTE_LENTA    ]:    365 amostras (  1.1%) | Balanço de Massa: Máquina a Montante (ECI) operando em velocidade reduzida
+   ↳ [ID 60 - LIMITADOR_RAMPA_MECANICA  ]:    270 amostras (  0.8%) | Transição em Rampa Suave Limitada pelo Slew Rate Mecânico
+   ↳ [ID 50 - FEEDFORWARD_ALERTA_B4     ]:    227 amostras (  0.7%) | Alerta Feedforward: Acúmulo Extremo a Jusante (B4 Pós-Pasteurizador)
+   ↳ [ID 40 - FEEDFORWARD_ALERTA_B1     ]:     64 amostras (  0.2%) | Alerta Feedforward: Falta Extrema a Montante (B1 Despaletizadora)
+
+[PARÂMETROS OTIMIZADOS V4]
+➔ Velocidade Nominal Enchedora: 60,000 CPH
+➔ Piso de Modulação Seguro     : 89.2% (53,506 CPH)
+➔ Teto Sprint / Sobrevelocidade: 101.0% (60,600 CPH)
+➔ Rampa Mecânica Máxima (Slew) : 3000 CPH por passo de 30s (100.0 CPH/s)
+➔ Gatilho Falta Entrada (B2)   : < 31.5% (Rampa: 19.3%)
+➔ Gatilho Acúmulo Saída (B3)   : > 69.2% (Rampa: 18.5%)
+➔ Feedforward Extremo B1       : < 24.0% (Margem: 21.9%)
+➔ Feedforward Extremo B4       : > 70.1% (Margem: 16.5%)
+➔ Fator Retomada Sincronizada  : 10.0% de alívio quando a jusante está acelerando
+===========================================================================

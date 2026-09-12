@@ -1,0 +1,90 @@
+<svg width="720" height="420" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark Supply Transformation Background -->
+  <rect width="100%" height="100%" fill="#000000" rx="10" />
+
+  <!-- Title & Header -->
+  <text x="30" y="38" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff">Status do Rollout por Linha — 2026</text>
+  <text x="30" y="60" font-family="Arial, sans-serif" font-size="12" fill="#888888">Acompanhamento do pipeline de implantação do Otimizador SEGUE</text>
+  <line x1="30" y1="72" x2="690" y2="72" stroke="#222222" stroke-width="1" />
+
+  <!-- Summary KPI Badges (Top Right) -->
+  <g transform="translate(415, 20)">
+    <!-- OK Count -->
+    <rect x="0" y="0" width="75" height="42" fill="#1c1917" stroke="#d99200" stroke-width="1.5" rx="5" />
+    <text x="37" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#d99200">3</text>
+    <text x="37" y="34" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#aaaaaa">Concluídas</text>
+
+    <!-- In Execution -->
+    <rect x="85" y="0" width="100" height="42" fill="#1c1917" stroke="#06b6d4" stroke-width="1.5" rx="5" />
+    <text x="135" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#06b6d4">1</text>
+    <text x="135" y="34" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#aaaaaa">Em Execução</text>
+
+    <!-- Planned -->
+    <rect x="195" y="0" width="75" height="42" fill="#1c1917" stroke="#64748b" stroke-width="1.5" rx="5" />
+    <text x="232" y="20" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#cbd5e1">2</text>
+    <text x="232" y="34" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#aaaaaa">Previstas</text>
+  </g>
+
+  <!-- Line Progress Bars & Status -->
+  
+  <!-- 1. NS 503 - OK -->
+  <g transform="translate(30, 95)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">NS 503</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#27272a" />
+    <rect x="90" y="6" width="440" height="24" fill="#d99200" rx="4" />
+    <text x="310" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">100% (Implantado)</text>
+    <rect x="545" y="4" width="145" height="28" fill="#d99200" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#000000">✓ OK</text>
+  </g>
+
+  <!-- 2. PG 501 - OK -->
+  <g transform="translate(30, 145)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">PG 501</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#27272a" />
+    <rect x="90" y="6" width="440" height="24" fill="#d99200" rx="4" />
+    <text x="310" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">100% (Implantado)</text>
+    <rect x="545" y="4" width="145" height="28" fill="#d99200" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#000000">✓ OK</text>
+  </g>
+
+  <!-- 3. AQ 541 - OK -->
+  <g transform="translate(30, 195)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">AQ 541</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#27272a" />
+    <rect x="90" y="6" width="440" height="24" fill="#d99200" rx="4" />
+    <text x="310" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">100% (Implantado)</text>
+    <rect x="545" y="4" width="145" height="28" fill="#d99200" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#000000">✓ OK</text>
+  </g>
+
+  <!-- 4. PI 541 - Em Execução essa Semana -->
+  <g transform="translate(30, 245)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">PI 541</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#06b6d4" stroke-width="1.5" />
+    <!-- Filled bar 50% -->
+    <rect x="90" y="6" width="220" height="24" fill="#06b6d4" rx="4" />
+    <text x="260" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#000000">⚙ Em Execução nesta Semana</text>
+    <rect x="545" y="4" width="145" height="28" fill="#06b6d4" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#000000">⚙ Execução (Esta Semana)</text>
+  </g>
+
+  <!-- 5. UB 511 - Previsto Setembro -->
+  <g transform="translate(30, 295)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">UB 511</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#27272a" />
+    <rect x="90" y="6" width="44" height="24" fill="#475569" rx="4" />
+    <text x="250" y="22" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">Planejado para Set/2026</text>
+    <rect x="545" y="4" width="145" height="28" fill="#334155" stroke="#475569" stroke-width="1" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#e2e8f0">📅 Prev. Setembro</text>
+  </g>
+
+  <!-- 6. QM 511 - Previsto Set/Out -->
+  <g transform="translate(30, 345)">
+    <text x="0" y="22" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff">QM 511</text>
+    <rect x="90" y="6" width="440" height="24" fill="#18181b" rx="4" stroke="#27272a" />
+    <rect x="90" y="6" width="44" height="24" fill="#475569" rx="4" />
+    <text x="250" y="22" font-family="Arial, sans-serif" font-size="11" fill="#aaaaaa">Planejado para Set-Out/2026</text>
+    <rect x="545" y="4" width="145" height="28" fill="#334155" stroke="#475569" stroke-width="1" rx="4" />
+    <text x="617" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#e2e8f0">📅 Prev. Set / Out</text>
+  </g>
+</svg>

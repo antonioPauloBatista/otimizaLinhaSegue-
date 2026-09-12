@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animação Interativa — CMA-ES (2 Buffers B2 & B3)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #000000; color: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 980px; background: #0a0a0a; border: 2px solid #333333; border-radius: 12px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #222222; padding-bottom: 15px; }
+        .header h1 { font-size: 24px; color: #ffffff; margin-bottom: 5px; }
+        .header p { font-size: 14px; color: #d99200; font-weight: 600; }
+        
+        /* Canvas Stage */
+        .stage-box { position: relative; width: 100%; height: 340px; background: #0f172a; border: 1.5px solid #1e293b; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        canvas { width: 100%; height: 100%; display: block; }
+        
+        /* Controls & KPI Dashboard */
+        .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .kpi-card { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 14px; text-align: center; }
+        .kpi-title { font-size: 11px; text-transform: uppercase; color: #888888; margin-bottom: 5px; font-weight: bold; }
+        .kpi-value { font-size: 20px; font-weight: bold; color: #ffffff; }
+        .kpi-sub { font-size: 11px; margin-top: 4px; }
+        
+        .controls { display: flex; justify-content: center; gap: 12px; }
+        .btn { background: #d99200; color: #000000; border: none; padding: 10px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { background: #f59e0b; transform: translateY(-2px); }
+        .btn-outline { background: transparent; color: #ffffff; border: 1px solid #444444; }
+        .btn-outline:hover { background: #222222; }
+
+        .stage-indicator { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); border: 1px solid #06b6d4; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; color: #06b6d4; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>🚀 Simulação Dinâmica CMA-ES — Controle dos 2 Buffers (B2 e B3)</h1>
+        <p>Atuação Contínua na Enchedora (ECH) — Proteção contra Falta (B2) e Acúmulo (B3)</p>
+    </div>
+
+    <div class="stage-box">
+        <div class="stage-indicator" id="stageBanner">Fase 1: Risco de Falta no Buffer B2</div>
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div class="dashboard">
+        <div class="kpi-card">
+            <div class="kpi-title">Buffer B2 (Entrada)</div>
+            <div class="kpi-value" id="kpiB2" style="color: #06b6d4;">55.0%</div>
+            <div class="kpi-sub" id="subB2" style="color: #888888;">UIP → ECH</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Enchedora (ECH)</div>
+            <div class="kpi-value" id="kpiSpeed" style="color: #d99200;">52.700 CPH</div>
+            <div class="kpi-sub" style="color: #aaaaaa;">Atuador Principal</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Buffer B3 (Saída)</div>
+            <div class="kpi-value" id="kpiB3" style="color: #eab308;">45.0%</div>
+            <div class="kpi-sub" id="subB3" style="color: #888888;">ECH → PZ</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Ganho Realizado</div>
+            <div class="kpi-value" id="kpiGain" style="color: #16a34a;">0 Garrafas/h</div>
+            <div class="kpi-sub" id="subGain" style="color: #16a34a;">Simulação em Curso</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="playBtn" onclick="togglePlay()">⏸️ Pausar Simulação</button>
+        <button class="btn btn-outline" onclick="resetSim()">🔄 Reiniciar</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    let isPlaying = true;
+    let frame = 0;
+    const totalFrames = 360;
+
+    let bottleOffset = 0;
+
+    function draw() {
+        const W = canvas.width;
+        const H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        let progress = (frame % totalFrames) / totalFrames;
+
+        let b2_level, b3_level, speed, stageText, stageColor, gainText, gainColor;
+
+        if (progress < 0.35) {
+            stageText = "FASE 1: RISCO DE FALTA NO BUFFER B2 (ENTRADA)";
+            stageColor = "#ef4444";
+            b2_level = 55.0 - (progress / 0.35) * 35.0; // 55% -> 20%
+            b3_level = 45.0 + (progress / 0.35) * 10.0; // 45% -> 55%
+            speed = 52700;
+            gainText = "0 Garrafas/h";
+            gainColor = "#888888";
+        } else if (progress < 0.70) {
+            let pSub = (progress - 0.35) / 0.35;
+            stageText = "FASE 2: ATUAÇÃO CMA-ES NA ENCHEDORA (REDUÇÃO SUAVE)";
+            stageColor = "#06b6d4";
+            b2_level = 20.0 + pSub * 25.0; // 20% -> 45%
+            b3_level = 55.0 - pSub * 10.0; // 55% -> 45%
+            speed = Math.round(52700 - pSub * (52700 - 38000));
+            gainText = "+ 2.100 Garrafas/h";
+            gainColor = "#06b6d4";
+        } else {
+            let pSub = (progress - 0.70) / 0.30;
+            stageText = "FASE 3: EQUILÍBRIO PERFEITO DOS 2 BUFFERS (B2 & B3 EM ZONA VERDE)";
+            stageColor = "#16a34a";
+            b2_level = 45.0 + pSub * 8.0; // 45% -> 53%
+            b3_level = 45.0 + pSub * 5.0; // 45% -> 50%
+            speed = 42000;
+            gainText = "+ 5.250 Garrafas/h (+12,4% OEE)";
+            gainColor = "#16a34a";
+        }
+
+        // Update DOM KPIs
+        document.getElementById('stageBanner').innerText = stageText;
+        document.getElementById('stageBanner').style.borderColor = stageColor;
+        document.getElementById('stageBanner').style.color = stageColor;
+
+        document.getElementById('kpiB2').innerText = b2_level.toFixed(1) + "%";
+        document.getElementById('kpiB3').innerText = b3_level.toFixed(1) + "%";
+        document.getElementById('kpiSpeed').innerText = speed.toLocaleString('pt-BR') + " CPH";
+        document.getElementById('kpiGain').innerText = gainText;
+        document.getElementById('kpiGain').style.color = gainColor;
+
+        // Draw Production Line Layout
+        const lineY = H * 0.52;
+
+        // UIP Machine (Left)
+        ctx.fillStyle = "#18181b";
+        ctx.strokeStyle = "#52525b";
+        ctx.lineWidth = 2;
+        ctx.fillRect(W * 0.05, lineY - 35, 75, 70);
+        ctx.strokeRect(W * 0.05, lineY - 35, 75, 70);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 13px Arial";
+        ctx.fillText("UIP", W * 0.05 + 24, lineY + 5);
+
+        // BUFFER B2 (Entrada) - Between UIP and ECH
+        const b2X = W * 0.16;
+        const b2W = W * 0.24;
+        ctx.fillStyle = "#1c1917";
+        ctx.strokeStyle = "#06b6d4";
+        ctx.strokeRect(b2X, lineY - 18, b2W, 36);
+        ctx.fillRect(b2X, lineY - 18, b2W, 36);
+
+        const b2FillW = b2W * (b2_level / 100);
+        const b2Color = b2_level < 25 ? "#ef4444" : (b2_level >= 40 ? "#16a34a" : "#06b6d4");
+        ctx.fillStyle = b2Color;
+        ctx.fillRect(b2X + 2, lineY - 16, b2FillW - 4, 32);
+
+        ctx.fillStyle = "#06b6d4";
+        ctx.font = "bold 11px Arial";
+        ctx.fillText("BUFFER B2 (Entrada)", b2X + 15, lineY - 26);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(b2_level.toFixed(1) + "%", b2X + b2W / 2 - 15, lineY + 5);
+
+        // ENCHEDORA Machine (ECH - CENTER)
+        const echX = W * 0.43;
+        const echW = W * 0.20;
+        ctx.fillStyle = "#d99200";
+        ctx.fillRect(echX, lineY - 55, echW, 110);
+        ctx.fillStyle = "#000000";
+        ctx.font = "bold 15px Arial";
+        ctx.fillText("ENCHEDORA", echX + 18, lineY - 20);
+        ctx.font = "bold 12px Arial";
+        ctx.fillText("(ECH)", echX + 45, lineY);
+        ctx.fillText(speed.toLocaleString('pt-BR') + " CPH", echX + 20, lineY + 25);
+
+        // BUFFER B3 (Saída) - Between ECH and PZ
+        const b3X = W * 0.66;
+        const b3W = W * 0.24;
+        ctx.fillStyle = "#1c1917";
+        ctx.strokeStyle = "#eab308";
+        ctx.strokeRect(b3X, lineY - 18, b3W, 36);
+        ctx.fillRect(b3X, lineY - 18, b3W, 36);
+
+        const b3FillW = b3W * (b3_level / 100);
+        const b3Color = b3_level > 75 ? "#ef4444" : (b3_level <= 60 ? "#16a34a" : "#eab308");
+        ctx.fillStyle = b3Color;
+        ctx.fillRect(b3X + 2, lineY - 16, b3FillW - 4, 32);
+
+        ctx.fillStyle = "#eab308";
+        ctx.font = "bold 11px Arial";
+        ctx.fillText("BUFFER B3 (Saída)", b3X + 20, lineY - 26);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(b3_level.toFixed(1) + "%", b3X + b3W / 2 - 15, lineY + 5);
+
+        // PZ Machine (Pasteurizador - Right)
+        const pzX = W * 0.92;
+        ctx.fillStyle = "#18181b";
+        ctx.strokeStyle = "#52525b";
+        ctx.fillRect(pzX, lineY - 35, 60, 70);
+        ctx.strokeRect(pzX, lineY - 35, 60, 70);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 13px Arial";
+        ctx.fillText("PZ", pzX + 20, lineY + 5);
+
+        // Moving Bottles on Conveyors
+        if (isPlaying) bottleOffset = (bottleOffset + (speed / 9000)) % 30;
+        ctx.fillStyle = "#facc15";
+        for (let bx = b2X + bottleOffset; bx < b2X + b2W - 10; bx += 30) {
+            ctx.fillRect(bx, lineY - 32, 10, 14);
+        }
+        for (let bx = b3X + bottleOffset; bx < b3X + b3W - 10; bx += 30) {
+            ctx.fillRect(bx, lineY - 32, 10, 14);
+        }
+
+        // Actuation Arrows
+        ctx.fillStyle = "#06b6d4";
+        ctx.font = "bold 12px Arial";
+        ctx.fillText("ATUAÇÃO ➔", echX - 70, lineY + 42);
+        ctx.fillStyle = "#eab308";
+        ctx.fillText("⬅ ATUAÇÃO", echX + echW + 10, lineY + 42);
+
+        if (isPlaying) frame++;
+        requestAnimationFrame(draw);
+    }
+
+    function togglePlay() {
+        isPlaying = !isPlaying;
+        document.getElementById('playBtn').innerText = isPlaying ? "⏸️ Pausar Simulação" : "▶️ Iniciar Simulação";
+    }
+
+    function resetSim() {
+        frame = 0;
+    }
+
+    draw();
+</script>
+</body>
+</html>
