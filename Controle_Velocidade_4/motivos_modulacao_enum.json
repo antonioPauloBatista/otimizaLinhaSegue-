@@ -20,23 +20,23 @@
     "descricao": "Falta de Garrafas no Buffer de Entrada (B2 ECI-Enchedora)",
     "categoria": "ENTRADA",
     "maquina_causadora": "ECI",
-    "localizacao_linha": "Montante Imediata",
-    "acao_recomendada": "Verificar alimentação da máquina a montante (ECI/DPL) e esteiras de alimentação."
+    "localizacao_linha": "Entrada da Enchedora",
+    "acao_recomendada": "Verificar alimentação na entrada da enchedora (ECI/DPL) e esteiras de alimentação."
   },
   "20": {
     "codigo": "ACUMULO_SAIDA_B3",
     "descricao": "Acúmulo de Garrafas no Buffer de Saída (B3 Enchedora-Pasteurizador)",
     "categoria": "SAIDA",
     "maquina_causadora": "Pasteurizador",
-    "localizacao_linha": "Jusante Imediata",
-    "acao_recomendada": "Verificar máquina a jusante (Pasteurizador) e esteiras de descarga para desobstruir fluxo."
+    "localizacao_linha": "Saída da Enchedora",
+    "acao_recomendada": "Verificar máquina na saída da enchedora (Pasteurizador) e esteiras de descarga para desobstruir fluxo."
   },
   "25": {
-    "codigo": "RETOMADA_ACELERANDO_JUSANTE",
-    "descricao": "Saída com Acúmulo, mas Máquina a Jusante Acelerando (Retomada Sincronizada)",
+    "codigo": "RETOMADA_ACELERANDO_SAIDA",
+    "descricao": "Saída com Acúmulo, mas Máquina da Saída Acelerando (Retomada Sincronizada)",
     "categoria": "TRANSICAO",
     "maquina_causadora": "Pasteurizador (Acelerando)",
-    "localizacao_linha": "Jusante Imediata",
+    "localizacao_linha": "Saída da Enchedora",
     "acao_recomendada": "Aguardar avanço da rampa; a máquina da frente já destravou e está puxando garrafas."
   },
   "30": {
@@ -44,23 +44,23 @@
     "descricao": "Duplo Conflito: Falta na Entrada (B2) e Acúmulo na Saída (B3) simultâneos",
     "categoria": "CRITICO",
     "maquina_causadora": "ECI e Pasteurizador",
-    "localizacao_linha": "Montante e Jusante Simultâneos",
+    "localizacao_linha": "Entrada e Saída da Enchedora Simultâneos",
     "acao_recomendada": "Desbalanceamento crítico da linha nas duas extremidades da enchedora."
   },
   "40": {
     "codigo": "FEEDFORWARD_ALERTA_B1",
-    "descricao": "Alerta Feedforward: Falta Extrema a Montante (B1 Despaletizadora)",
+    "descricao": "Alerta Feedforward: Falta Extrema na Entrada (B1 Despaletizadora)",
     "categoria": "FEEDFORWARD_ENTRADA",
     "maquina_causadora": "Despaletizadora (DPL)",
-    "localizacao_linha": "Extremo Montante",
+    "localizacao_linha": "Extremo da Entrada",
     "acao_recomendada": "Verificar Despaletizadora / Desencaixotadora antes de secar a entrada da enchedora."
   },
   "50": {
     "codigo": "FEEDFORWARD_ALERTA_B4",
-    "descricao": "Alerta Feedforward: Acúmulo Extremo a Jusante (B4 Pós-Pasteurizador)",
+    "descricao": "Alerta Feedforward: Acúmulo Extremo na Saída (B4 Pós-Pasteurizador)",
     "categoria": "FEEDFORWARD_SAIDA",
     "maquina_causadora": "Rotuladora / Empacotadora",
-    "localizacao_linha": "Extremo Jusante",
+    "localizacao_linha": "Extremo da Saída",
     "acao_recomendada": "Verificar Rotuladora / Empacotadora antes que o acúmulo afete o pasteurizador."
   },
   "60": {
@@ -80,19 +80,19 @@
     "acao_recomendada": "Verificar se a enchedora está em modo manutenção, restrição de operador, baixa pressão de CO2 ou falta de tampas."
   },
   "70": {
-    "codigo": "MAQUINA_MONTANTE_LENTA",
-    "descricao": "Balanço de Massa: Máquina a Montante (ECI) operando em velocidade reduzida",
+    "codigo": "MAQUINA_ENTRADA_LENTA",
+    "descricao": "Balanço de Massa: Máquina da Entrada (ECI) operando em velocidade reduzida",
     "categoria": "BALANCO_MASSA",
     "maquina_causadora": "ECI",
-    "localizacao_linha": "Montante Imediata",
+    "localizacao_linha": "Entrada da Enchedora",
     "acao_recomendada": "Redução preventiva para não esvaziar o buffer de entrada subitamente."
   },
   "80": {
-    "codigo": "MAQUINA_JUSANTE_LENTA",
-    "descricao": "Balanço de Massa: Máquina a Jusante (Pasteurizador) operando em velocidade reduzida",
+    "codigo": "MAQUINA_SAIDA_LENTA",
+    "descricao": "Balanço de Massa: Máquina da Saída (Pasteurizador) operando em velocidade reduzida",
     "categoria": "BALANCO_MASSA",
     "maquina_causadora": "Pasteurizador",
-    "localizacao_linha": "Jusante Imediata",
+    "localizacao_linha": "Saída da Enchedora",
     "acao_recomendada": "Redução preventiva para evitar choque de garrafas no buffer de saída."
   },
   "90": {
@@ -108,7 +108,7 @@
     "descricao": "Parada Crítica do CLP por Falta de Garrafas na Entrada (B2 <= 10%)",
     "categoria": "SEGURANCA_CLP",
     "maquina_causadora": "ECI (Lavadora / Inspetora)",
-    "localizacao_linha": "Montante Imediata",
+    "localizacao_linha": "Entrada da Enchedora",
     "acao_recomendada": "Intervenção na ECI / Despaletizadora: o pulmão de entrada secou completamente."
   },
   "92": {
@@ -116,7 +116,7 @@
     "descricao": "Parada Crítica do CLP por Acúmulo de Garrafas na Saída (B3 >= 90%)",
     "categoria": "SEGURANCA_CLP",
     "maquina_causadora": "Pasteurizador",
-    "localizacao_linha": "Jusante Imediata",
+    "localizacao_linha": "Saída da Enchedora",
     "acao_recomendada": "Intervenção no Pasteurizador / Fim de Linha: o pulmão de saída atingiu lotação máxima."
   },
   "99": {

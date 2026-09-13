@@ -507,330 +507,60 @@ with open("parametros_controle_v4.json", "w", encoding="utf-8") as f:
 print("➔ Parâmetros salvos em 'parametros_controle_v4.json'.")
 
 # =====================================================================
-# 6. GERAÇÃO AUTOMÁTICA DE CÓDIGO AUTÔNOMO E LIVE
+# 6. GERAÇÃO AUTOMÁTICA DE CÓDIGO AUTÔNOMO E CONTROLADORES LIVE
 # =====================================================================
-codigo_funcao = f'''# -*- coding: utf-8 -*-
-"""
-FUNÇÃO DE CONTROLE DE VELOCIDADE DA ENCHEDORA V4 COM DIAGNÓSTICO DE CAUSA-RAIZ
-Gerado automaticamente pelo otimizador_velocidade_v4.py em {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.
+dir_atual = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+caminho_tpl_funcao = os.path.join(dir_atual, "templates", "funcao_controle_v4.template.py")
+caminho_tpl_live = os.path.join(dir_atual, "templates", "controlador_velocidade_live_v4.template.py")
+caminho_tpl_graf = os.path.join(dir_atual, "templates", "controlador_velocidade_grafana_v4.template.py")
 
-Retorna:
-    (velocidade_cph, motivo_id)
-    Onde motivo_id mapeia diretamente para 'motivos_modulacao_enum.json'.
-"""
+# 1. Gerar funcao_controle_v4.py
+with open(caminho_tpl_funcao, "r", encoding="utf-8") as f:
+    cod_funcao = f.read()
 
-import os
-import json
-
-def rampa_trapezoidal(x, a, b, c, d):
-    if x <= a or x >= d: return 0.0
-    if a < x <= b: return (x - a) / (b - a) if b > a else 1.0
-    if b < x <= c: return 1.0
-    if c < x < d: return (d - x) / (d - c) if d > c else 1.0
-    return 0.0
-
-class ControladorVelocidadeV4:
-    def __init__(self, velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)}, v_atual_inicial=None):
-        self.vel_nom = float(velocidade_nominal)
-        self.b1_lim = {b1_opt:.2f}
-        self.b2_lim = {b2_opt:.2f}
-        self.b3_lim = {b3_opt:.2f}
-        self.b4_lim = {b4_opt:.2f}
-        self.rampa_b2 = {rampa_b2_opt:.2f}
-        self.rampa_b3 = {rampa_b3_opt:.2f}
-        self.antecip_b1 = {antecip_b1_opt:.2f}
-        self.antecip_b4 = {antecip_b4_opt:.2f}
-        self.min_mod = {min_mod_opt:.3f}
-        self.peso_retomada = {peso_retomada_opt:.3f}
-        self.fator_sprint = {fator_sprint_opt:.3f}
-        self.max_rampa = {MAX_RAMPA_CPH_PASSO:.1f}
-        self.alpha_ewma = {ALPHA_FILTRO_BUFFER:.2f}
-
-        # Estado interno dos filtros e rampa mecânica
-        self.b1_f = 50.0
-        self.b2_f = 50.0
-        self.b3_f = 50.0
-        self.b4_f = 50.0
-        self.v_saida_anterior = None
-        self.v_atual = float(v_atual_inicial) if v_atual_inicial is not None else self.vel_nom
-        self.ultimo_motivo_id = 0
-
-        # Carregar descrições de motivo se o json estiver presente
-        self.mapa_motivos = {{}}
-        if os.path.exists("motivos_modulacao_enum.json"):
-            try:
-                with open("motivos_modulacao_enum.json", "r", encoding="utf-8") as f:
-                    self.mapa_motivos = json.load(f)
-            except Exception: pass
-
-    def filtrar_buffer(self, b_val, b_antigo):
-        return self.alpha_ewma * float(b_val) + (1.0 - self.alpha_ewma) * float(b_antigo)
-
-    def obter_motivo(self, motivo_id=None):
-        m_id = str(self.ultimo_motivo_id if motivo_id is None else motivo_id)
-        return self.mapa_motivos.get(m_id, {{"codigo": "DESCONHECIDO", "descricao": "Modulação de fluxo"}})
-
-    def calcular_velocidade(self, b1, b2, b3, b4, v_in=None, v_out=None, delta_t_s=30.0, retornar_motivo=True):
-        # 1. Filtro EWMA contínuo
-        self.b1_f = self.filtrar_buffer(b1, self.b1_f)
-        self.b2_f = self.filtrar_buffer(b2, self.b2_f)
-        self.b3_f = self.filtrar_buffer(b3, self.b3_f)
-        self.b4_f = self.filtrar_buffer(b4, self.b4_f)
-
-        v_in = float(v_in) if v_in is not None else self.vel_nom
-        v_out = float(v_out) if v_out is not None else self.vel_nom
-
-        # 2. Tendência de Aceleração da Máquina da Frente
-        trend_vout = 0.0
-        if self.v_saida_anterior is not None and delta_t_s > 0:
-            trend_vout = (v_out - self.v_saida_anterior) / float(delta_t_s)
-        self.v_saida_anterior = v_out
-
-        mu_acelerando = max(0.0, min(1.0, (trend_vout - 20.0) / 100.0))
-
-        # 3. Lógica Fuzzy Takagi-Sugeno
-        v_nom = self.vel_nom
-        v_sprint = self.vel_nom * self.fator_sprint
-        v_reduz = self.vel_nom * self.min_mod
-
-        b2_baixo  = rampa_trapezoidal(self.b2_f, -1, 0, self.b2_lim - self.rampa_b2, self.b2_lim)
-        b2_normal = rampa_trapezoidal(self.b2_f, self.b2_lim - self.rampa_b2, self.b2_lim, 100, 101)
-        b3_normal = rampa_trapezoidal(self.b3_f, -1, 0, self.b3_lim, self.b3_lim + self.rampa_b3)
-        b3_alto   = rampa_trapezoidal(self.b3_f, self.b3_lim, self.b3_lim + self.rampa_b3, 100, 101)
-
-        b1_alerta = rampa_trapezoidal(self.b1_f, -1, 0, self.b1_lim, self.b1_lim + self.antecip_b1)
-        b4_alerta = rampa_trapezoidal(self.b4_f, self.b4_lim - self.antecip_b4, self.b4_lim, 100, 101)
-
-        w_saida_cheia = b3_alto * (1.0 - self.peso_retomada * mu_acelerando)
-        w_retomada = b3_alto * (self.peso_retomada * mu_acelerando)
-
-        cond_sprint = (self.b2_f >= (self.b2_lim + 10.0)) and (self.b3_f <= (self.b3_lim - 10.0)) and (v_in >= 0.90 * v_nom) and (v_out >= 0.90 * v_nom)
-        w_sprint = 1.0 if cond_sprint else 0.0
-        w_normal = min(b2_normal, b3_normal) * (1.0 - w_sprint)
-
-        num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (b4_alerta * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
-        den = b2_baixo + w_saida_cheia + w_retomada + b1_alerta + b4_alerta + w_normal + w_sprint
-        v_alvo = v_nom if den == 0 else num / den
-        v_alvo = max(v_reduz, min(v_sprint, v_alvo))
-
-        # 4. Limitador de Rampa Mecânica (Slew Rate)
-        v_ant = self.v_atual
-        if self.v_atual <= 0.0:
-            self.v_atual = min(v_alvo, v_reduz)
-        else:
-            delta = v_alvo - self.v_atual
-            if delta > self.max_rampa:
-                self.v_atual += self.max_rampa
-            elif delta < -self.max_rampa:
-                self.v_atual -= self.max_rampa
-            else:
-                self.v_atual = v_alvo
-
-        v_final = round(self.v_atual, 1)
-
-        # 5. Identificação do Motivo e da Máquina Causadora (Reason Code)
-        if v_final == 0.0:
-            if self.b2_f <= 10.0 and self.b3_f >= 90.0:
-                m_id = 90  # PARADA_SEGURANCA_BUFFER
-            elif self.b2_f <= 10.0:
-                m_id = 91  # PARADA_INTERTRAV_ENTRADA_ECI
-            elif self.b3_f >= 90.0:
-                m_id = 92  # PARADA_INTERTRAV_SAIDA_PASTEURIZADOR
-            else:
-                m_id = 99  # PARADA_EXTERNA_MANUTENCAO
-        elif v_final > v_nom + 10.0:
-            m_id = 1   # SPRINT_SOBREVELOCIDADE
-        elif v_final >= v_nom - 10.0:
-            m_id = 0   # NORMAL_FULL
-        else:
-            # Modulação ativa abaixo da nominal
-            if v_alvo > v_final + 150.0:
-                m_id = 60  # LIMITADOR_RAMPA_MECANICA (rampa subindo gradualmente)
-            elif self.b2_f < self.b2_lim and self.b3_f > self.b3_lim:
-                m_id = 30  # CONFLITO_ENTRADA_SAIDA
-            elif self.b3_f > self.b3_lim and trend_vout > 20.0:
-                m_id = 25  # RETOMADA_ACELERANDO_JUSANTE
-            elif self.b3_f > self.b3_lim:
-                m_id = 20  # ACUMULO_SAIDA_B3
-            elif self.b2_f < self.b2_lim:
-                m_id = 10  # FALTA_ENTRADA_B2
-            elif v_out < 0.85 * v_nom:
-                m_id = 80  # MAQUINA_JUSANTE_LENTA
-            elif v_in < 0.85 * v_nom:
-                m_id = 70  # MAQUINA_MONTANTE_LENTA
-            elif self.b4_f > self.b4_lim:
-                m_id = 50  # FEEDFORWARD_ALERTA_B4
-            elif self.b1_f < self.b1_lim:
-                m_id = 40  # FEEDFORWARD_ALERTA_B1
-            else:
-                m_id = 20 if (self.b3_f - self.b3_lim) > (self.b2_lim - self.b2_f) else 10
-
-        self.ultimo_motivo_id = m_id
-        if retornar_motivo:
-            return v_final, m_id
-        return v_final
-'''
-
+cod_funcao = (
+    cod_funcao
+    .replace("__DATA_GERACAO__", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    .replace("__VEL_NOMINAL__", str(int(VELOCIDADE_NOMINAL_ECH)))
+    .replace("__B1_OPT__", f"{b1_opt:.2f}")
+    .replace("__B2_OPT__", f"{b2_opt:.2f}")
+    .replace("__B3_OPT__", f"{b3_opt:.2f}")
+    .replace("__B4_OPT__", f"{b4_opt:.2f}")
+    .replace("__RAMPA_B2_OPT__", f"{rampa_b2_opt:.2f}")
+    .replace("__RAMPA_B3_OPT__", f"{rampa_b3_opt:.2f}")
+    .replace("__ANTECIP_B1_OPT__", f"{antecip_b1_opt:.2f}")
+    .replace("__ANTECIP_B4_OPT__", f"{antecip_b4_opt:.2f}")
+    .replace("__MIN_MOD_OPT__", f"{min_mod_opt:.3f}")
+    .replace("__PESO_RETOMADA_OPT__", f"{peso_retomada_opt:.3f}")
+    .replace("__FATOR_SPRINT_OPT__", f"{fator_sprint_opt:.3f}")
+    .replace("__MAX_RAMPA__", f"{MAX_RAMPA_CPH_PASSO:.1f}")
+    .replace("__ALPHA_EWMA__", f"{ALPHA_FILTRO_BUFFER:.2f}")
+)
 with open("funcao_controle_v4.py", "w", encoding="utf-8") as f:
-    f.write(codigo_funcao)
-print("➔ Função autônoma atualizada em 'funcao_controle_v4.py'.")
+    f.write(cod_funcao)
+print("➔ Função autônoma gerada em 'funcao_controle_v4.py'.")
 
-# Atualizar controlador_velocidade_live_v4.py
-codigo_live = f'''#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Controlador de Velocidade Live Interativo V4 (Simulador de Bancada com Motivos)
-Mostra o setpoint de velocidade e o motivo da modulação / parada em tempo real.
-"""
+# 2. Gerar controlador_velocidade_live_v4.py
+with open(caminho_tpl_live, "r", encoding="utf-8") as f:
+    cod_live = f.read()
 
-from funcao_controle_v4 import ControladorVelocidadeV4
-
-def main():
-    print("="*75)
-    print("   SIMULADOR DE VELOCIDADE LIVE V4 COM MOTIVOS DE PARADA / MODULAÇÃO")
-    print("="*75)
-    print("Injetando parâmetros otimizados V4 com enum de causas-raiz...\\n")
-
-    ctrl = ControladorVelocidadeV4(velocidade_nominal={int(VELOCIDADE_NOMINAL_ECH)})
-
-    while True:
-        try:
-            print("Digite os valores das variáveis (ou Ctrl+C para sair):")
-            b1 = float(input("  B1 - Extremo Entrada (LG/DPL) [%]     [50]: ") or "50")
-            b2 = float(input("  B2 - Entrada Imediata (ECI/Filler) [%] [50]: ") or "50")
-            b3 = float(input("  B3 - Saída Imediata (Filler/PZ) [%]   [50]: ") or "50")
-            b4 = float(input("  B4 - Extremo Saída (PZ/Rotuladora) [%] [50]: ") or "50")
-            vin = float(input("  Velocidade Máquina Entrada (ECI) [CPH] [{int(VELOCIDADE_NOMINAL_ECH)}]: ") or "{int(VELOCIDADE_NOMINAL_ECH)}")
-            vout = float(input("  Velocidade Máquina Saída (PZ) [CPH]    [{int(VELOCIDADE_NOMINAL_ECH)}]: ") or "{int(VELOCIDADE_NOMINAL_ECH)}")
-
-            vel, motivo_id = ctrl.calcular_velocidade(b1, b2, b3, b4, v_in=vin, v_out=vout, delta_t_s=30.0, retornar_motivo=True)
-            info = ctrl.obter_motivo(motivo_id)
-            perc = round((vel / {float(VELOCIDADE_NOMINAL_ECH)}) * 100.0, 1)
-
-            print("-" * 75)
-            if perc > 100.0:
-                print(f"➔ SETPOINT V4: {{vel:.0f}} CPH ({{perc}}%) 🚀 MODO SPRINT / SOBREVELOCIDADE")
-            elif perc == 100.0:
-                print(f"➔ SETPOINT V4: {{vel:.0f}} CPH ({{perc}}%) ✅ MÁQUINA NOMINAL (FULL)")
-            else:
-                print(f"➔ SETPOINT V4: {{vel:.0f}} CPH ({{perc}}%) ⚠️ MODULAÇÃO SUAVE ATIVA")
-            
-            print(f"➔ MOTIVO [ID {{motivo_id}} - {{info.get('codigo')}}]: {{info.get('descricao')}}")
-            print(f"   ↳ Categoria: {{info.get('categoria')}}")
-            print(f"   ↳ Ação Recomendada: {{info.get('acao_recomendada')}}")
-            print("-" * 75)
-            print("")
-        except KeyboardInterrupt:
-            print("\\nSaindo do simulador live...")
-            break
-        except ValueError:
-            print("\\n⚠️ Entrada inválida. Por favor, digite números válidos.\\n")
-
-if __name__ == "__main__":
-    main()
-'''
-
+cod_live = cod_live.replace("__VEL_NOMINAL__", str(int(VELOCIDADE_NOMINAL_ECH)))
 with open("controlador_velocidade_live_v4.py", "w", encoding="utf-8") as f:
-    f.write(codigo_live)
-print("➔ Simulador live atualizado em 'controlador_velocidade_live_v4.py'.")
+    f.write(cod_live)
+print("➔ Simulador live gerado em 'controlador_velocidade_live_v4.py'.")
 
-# Atualizar controlador_velocidade_grafana_v4.py
-codigo_grafana = f'''#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Controlador de Velocidade Live via Grafana / InfluxDB V4
-Conecta a cada 30 segundos, extrai dados brutos, aplica filtros data-driven,
-calcula tendências e despacha o setpoint otimizado com rampa suave e Motivo ID.
-"""
+# 3. Gerar controlador_velocidade_grafana_v4.py
+with open(caminho_tpl_graf, "r", encoding="utf-8") as f:
+    cod_graf = f.read()
 
-import time
-import datetime
-import requests
-import json
-import base64
-import pandas as pd
-import sys
-import os
-from funcao_controle_v4 import ControladorVelocidadeV4
-
-GRAFANA_URL = "http://172.23.224.145:3000"
-GRAFANA_USER = "admin"
-GRAFANA_PASSWORD = "!ambev2021"
-GRAFANA_TOKEN = ""
-DATASOURCE_SELECTOR = "13"
-BUCKET = "Segue"
-MEASUREMENT = "NS-512"
-
-VEL_NOMINAL = {float(VELOCIDADE_NOMINAL_ECH)}
-
-def obter_ds_uid(session, headers):
-    ds_url = f"{{GRAFANA_URL.rstrip('/')}}/api/datasources"
-    try:
-        r = session.get(ds_url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            for ds in r.json():
-                if str(ds.get("id")) == DATASOURCE_SELECTOR or str(ds.get("name")).lower() == DATASOURCE_SELECTOR.lower():
-                    return ds.get("uid")
-    except Exception: pass
-    return None
-
-def main():
-    print("="*75)
-    print("   CONTROLADOR DE VELOCIDADE LIVE GRAFANA V4 (BALANÇO + MOTIVOS)")
-    print("="*75)
-    print(f"Conectando ao Grafana: {{GRAFANA_URL}} a cada 30 segundos...\\n")
-
-    session = requests.Session()
-    usr_pass = f"{{GRAFANA_USER}}:{{GRAFANA_PASSWORD}}".encode("utf-8")
-    basic_auth = f"Basic {{base64.b64encode(usr_pass).decode('utf-8')}}"
-    headers = {{"Accept": "application/json", "Content-Type": "application/json", "Authorization": basic_auth}}
-
-    ds_uid = obter_ds_uid(session, headers)
-    controlador = ControladorVelocidadeV4(velocidade_nominal=VEL_NOMINAL)
-
-    while True:
-        agora = datetime.datetime.now(datetime.timezone.utc)
-        t_start = agora - datetime.timedelta(minutes=15)
-        t_stop = agora
-
-        flux_query = f\'\'\'from(bucket: "{{BUCKET}}")
-  |> range(start: {{t_start.strftime("%Y-%m-%dT%H:%M:%SZ")}}, stop: {{t_stop.strftime("%Y-%m-%dT%H:%M:%SZ")}})
-  |> filter(fn: (r) => r["_measurement"] == "{{MEASUREMENT}}")
-  |> last()
-  |> map(fn: (r) => ({{{{ r with _value: float(v: r._value) }}}}))
-  |> pivot(rowKey: ["_measurement", "_time"], columnKey: ["_field", "buffer_name_local", "machine_name_generic"], valueColumn: "_value")\'\'\'
-
-        ds_payload = {{
-            "from": str(int(t_start.timestamp() * 1000)),
-            "to": str(int(t_stop.timestamp() * 1000)),
-            "queries": [{{"datasource": {{"uid": ds_uid, "type": "influxdb"}}, "query": flux_query, "queryType": "flux", "refId": "A"}}]
-        }}
-
-        try:
-            resp = session.post(f"{{GRAFANA_URL.rstrip('/')}}/api/ds/query", headers=headers, json=ds_payload, timeout=15)
-            if resp.status_code == 200:
-                b1, b2, b3, b4 = 50.0, 50.0, 50.0, 50.0
-                vin, vout = VEL_NOMINAL, VEL_NOMINAL
-                v_otim, motivo_id = controlador.calcular_velocidade(b1, b2, b3, b4, v_in=vin, v_out=vout, delta_t_s=30.0, retornar_motivo=True)
-                info = controlador.obter_motivo(motivo_id)
-                hora_str = datetime.datetime.now().strftime("%H:%M:%S")
-                perc = round((v_otim / VEL_NOMINAL) * 100.0, 1)
-                print(f"[{{hora_str}}] Setpoint: {{v_otim:.0f}} CPH ({{perc}}%) | Motivo [{{motivo_id}} - {{info.get('codigo')}}]: {{info.get('descricao')}}")
-            else:
-                print(f"Status Grafana: {{resp.status_code}}")
-        except Exception as e:
-            print(f"Erro Grafana: {{e}}")
-
-        try: time.sleep(30)
-        except KeyboardInterrupt: break
-
-if __name__ == "__main__":
-    main()
-'''
-
+cod_graf = (
+    cod_graf
+    .replace("__VEL_NOMINAL__", str(float(VELOCIDADE_NOMINAL_ECH)))
+    .replace("__LIMIAR_PARADA__", str(float(LIMIAR_VELOCIDADE_MANUTENCAO)))
+)
 with open("controlador_velocidade_grafana_v4.py", "w", encoding="utf-8") as f:
-    f.write(codigo_grafana)
-print("➔ Módulo Grafana atualizado em 'controlador_velocidade_grafana_v4.py'.")
+    f.write(cod_graf)
+print("➔ Controlador Grafana live gerado em 'controlador_velocidade_grafana_v4.py'.")
 
 # =====================================================================
 # 7. EXPORTAÇÃO CSV COMPLETA COM CÓDIGOS DE MOTIVO
@@ -909,7 +639,7 @@ for dia in dias_unicos:
     pintar_regioes(ax_vel, df_dia["Timestamp"], gatilho_b2 & ~gatilho_b3, "#2980B9", "⬇ [10] B2 Entrada Baixa")
     pintar_regioes(ax_vel, df_dia["Timestamp"], gatilho_b3 & ~gatilho_b2, "#E67E22", "⬇ [20] B3 Saída Cheia")
     pintar_regioes(ax_vel, df_dia["Timestamp"], gatilho_ambos,             "#8E44AD", "⬇ [30] B2+B3 Simultâneos")
-    pintar_regioes(ax_vel, df_dia["Timestamp"], gatilho_sprint,            "#27AE60", "🚀 [1] Sprint (> 100%)", alpha=0.12)
+    pintar_regioes(ax_vel, df_dia["Timestamp"], gatilho_sprint,            "#27AE60", "▲ [1] Sprint (> 100%)", alpha=0.12)
 
     pintar_regioes(ax_buf, df_dia["Timestamp"], gatilho_b2 & ~gatilho_b3, "#2980B9", "_nolegend_")
     pintar_regioes(ax_buf, df_dia["Timestamp"], gatilho_b3 & ~gatilho_b2, "#E67E22", "_nolegend_")

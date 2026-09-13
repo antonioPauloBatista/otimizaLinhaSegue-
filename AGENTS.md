@@ -228,7 +228,7 @@ Verifica:
 Confirma:
 
 - Consistência técnica.
-- Clareza.
+- Clareza e legibilidade da documentação (READMEs e memoriais técnicos devem usar texto limpo e direto, evitando sintaxe LaTeX crua como $...$ ou fórmulas indecifráveis em visualizadores comuns de Markdown).
 - Riscos.
 - Premissas.
 - Possíveis melhorias.

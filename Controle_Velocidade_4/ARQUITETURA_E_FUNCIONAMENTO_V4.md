@@ -427,7 +427,107 @@ END_VAR
 
 ---
 
-## 14. Matriz de Governança dos Agentes Especializados (`AGENTS.md`)
+## 14. Validação Física de Produção Real e Auditoria de Giro em Vazio (Totalizador de Embalagens via InfluxQL)
+
+### 14.1 O Problema Operacional: Rotação do Motor vs. Produção Física Real
+Nos sistemas tradicionais de supervisório e telemetria, a vazão instantânea da enchedora é obtida pela velocidade angular do inversor de frequência acoplado ao carrossel rotativo (`speed_actual_cph`).
+
+No entanto, no ambiente fabril real de envase de bebidas, existem diversas condições operacionais em que **o motor principal da enchedora se encontra girando a velocidades elevadas (ex: 40.000 a 50.000 garrafas/h) sem que nenhuma garrafa esteja sendo envasada**:
+1. **Procedimentos de CIP (Clean-In-Place) e Sanitização:** O carrossel gira em velocidade de circulação para limpeza química de tubulações e válvulas com água quente e desinfetante, com esteiras vazias.
+2. **Purgas e Descarte de Produto:** Rotação controlada para esgotamento de linhas de cerveja antes de trocas de sabor ou no início de turno.
+3. **Falta de Alimentação na Entrada com Motor Ligado:** Se a despaletizadora ou a rotuladora desarmar, o carrossel da enchedora pode permanecer girando no limiar de operação em vazio aguardando a aproximação de novos recipientes.
+4. **Intertravamentos com Descarga Aberta:** O carrossel gira para expelir recipientes quebrados ou resíduos.
+
+**Impacto nos Cálculos de Desempenho e Ganho:**
+Se o algoritmo de controle estimar a produção real apenas integrando a velocidade do motor:
+`Producao_Estimada = (Velocidade_Motor * Delta_t) / 3600`
+ele registrará milhares de garrafas falsas como "produzidas" enquanto a máquina estava rodando a seco ("falso giro"), distorcendo os relatórios de disponibilidade e produtividade da fábrica.
+
+---
+
+### 14.2 Arquitetura de Validação Física via Contador Totalizador (Dual-Datasource)
+Para eliminar qualquer ganho fictício e atestar o ganho real de garrafas físicas cheias e arrolhadas, o Controlador V4 opera com uma arquitetura de **duas fontes de dados independentes (Dual-Datasource)** no Grafana:
+
+| Domínio de Dados | Fonte / Banco Grafana | Protocolo / Linguagem | Variáveis Monitoradas |
+| :--- | :--- | :--- | :--- |
+| **Dinâmica de Linha e Buffers** | Bucket `Segue` (DS ID `13`, UID `ef1kgorem6by8f`) | **FLUX** (InfluxDB v2) | Níveis de acúmulo B1..B4, velocidade real (`speed_actual_cph`), velocidades de ECI e Pasteurizador |
+| **Auditoria e Produção Física** | Banco `soda-template` (DS ID `8`, UID `qbSajtHSz`) | **INFLUXQL** (InfluxDB v1) | Contador totalizador da enchedora (`Packaging Machine Production Counter - Total`) |
+
+> [!IMPORTANT]
+> **Observação Técnica de Separação de Bancos:**
+> - A query de **contagem de produção** é executada estritamente no banco **`soda-template`** (Datasource ID `8`, nome `SODA Template`, UID `qbSajtHSz`), consultando a tabela `"Filler"` do equipamento `NS-05410-ENCHEDORA 01`.
+> - As queries de **níveis dos buffers (B1 a B4) e velocidades** são executadas no bucket **`Segue`** (Datasource ID `13`, UID `ef1kgorem6by8f`).
+> - Essa dissociação garante alta frequência e baixa latência para a malha de controle sem sobrecarregar a base de contagem de produção.
+
+- **Arquivo de Configuração Local:** [`Controle_Velocidade_4/parametros_query.json`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/parametros_query.json).
+  O script busca este arquivo prioritariamente no mesmo diretório do executável (`os.path.dirname(__file__)`), viabilizando a inicialização direta em qualquer pasta de trabalho.
+
+```
+[ Telemetria de Buffers B1..B4 ] ──► [ Bucket: Segue (DS 13) ] ──(FLUX)─────► [ Controlador V4: Modulação ]
+                                                                                       ▲
+                                                                                       │ Validação Física
+[ Fotocélula de Saída Enchedora] ──► [ DB: soda-template (DS 8) ] ──(INFLUXQL)───► [ Auditoria de Garrafas ]
+```
+
+---
+
+### 14.3 Equações e Regras de Decisão por Ciclo (Amostragem de 30s)
+
+A cada ciclo de 30 segundos, o algoritmo consulta o último registro consolidado no banco:
+`SELECT LAST("Packaging Machine Production Counter - Total") FROM "Filler" WHERE "equipment_name"::tag = 'NS-05410-ENCHEDORA 01'`
+
+E calcula o delta físico de produção:
+`Delta_Contador = Contador_Atual - Contador_Anterior`
+
+Com proteção de integridade: caso ocorra reset do contador na IHM ou overflow do registrador numérico (`Delta_Contador < 0`), o valor é limitado em zero.
+
+O sistema classifica a operação nos seguintes cenários:
+
+#### Cenário 1: Máquina Real Parada (Velocidade Real < 10.000 garrafas/h)
+- Regra de Ouro Industrial: Se a máquina física da fábrica parou, o Controlador V4 também para imediatamente em 0 garrafas/h.
+- Produção Real do Ciclo = 0 garrafas.
+- Produção Controlador do Ciclo = 0 garrafas.
+- Saldo de Ganho do Ciclo = 0 garrafas (sem acúmulo de ganhos fictícios em parada).
+- Diagnóstico: `🛑 Parada Real Confirmada (+0 gf) | Contador Físico: X gf`
+
+#### Cenário 2: Motor Girando em Falso / Em Vazio (Velocidade Real >= 10.000 garrafas/h e Delta_Contador == 0)
+- O motor está girando, mas a fotocélula de saída não registrou nenhuma garrafa física envasada no período.
+- Produção Real do Ciclo = 0 garrafas (a velocidade indicada é desconsiderada).
+- Produção Controlador do Ciclo = (Velocidade_Otimizada * Delta_t) / 3600.
+- Diagnóstico: `⚠️ Motor Girando sem Garrafas (+0 gf no sensor) | Contador: X gf`
+
+#### Cenário 3: Produção Física Efetiva Confirmada (Velocidade Real >= 10.000 garrafas/h e Delta_Contador > 0)
+- Produção física real confirmada diretamente pelo sensor da enchedora.
+- Produção Real do Ciclo = Delta_Contador (garrafas físicas reais).
+- Produção Controlador do Ciclo = (Velocidade_Otimizada * Delta_t) / 3600.
+- Saldo Líquido do Ciclo = Produção_Controlador - Produção_Real.
+- Diagnóstico: `✅ Produção Real Confirmada: +Delta gf físicas no ciclo | Contador: X gf`
+
+#### Cenário 4: Contingência e Resiliência Operacional (Sensor Inacessível)
+- Caso ocorra falha de rede temporária ou indisponibilidade do banco InfluxDB, o sistema calcula a produção pela rotação do motor com a indicação explícita: `(Estimada por Velocidade)`.
+- O controlador não interrompe a regulação do processo industrial nem gera exceções não tratadas.
+
+---
+
+### 14.4 Consolidação nos Relatórios de Produção (`resumo_producao_live_v4.txt` e `.json`)
+
+Ao finalizar a sessão (via sinal de interrupção Ctrl+C), o memorial consolida a produção sob dupla checagem:
+```text
+[2. RESUMO DE PRODUÇÃO NO TEMPO LIGADO]
+➔ Produção Real Registrada    : 12,450.0 garrafas [Validada por Sensor Físico: 12,450 gf | Contador: 15,433,600 gf | Vazão: 49,800 garrafas/h]
+➔ Produção Controlador        : 14,800.0 garrafas (Vazão Média: 53,520 garrafas/h)
+➔ SALDO DE GARRAFAS GERADAS   : +2,350.0 garrafas (+18.88%)
+```
+
+No arquivo estruturado `resumo_producao_live_v4.json`, as métricas de auditoria física são gravadas sob as chaves:
+- `garrafas_sensor_fisico`: total de garrafas físicas incrementadas.
+- `ciclos_validacao_sensor`: número de ciclos de 30s com resposta bem-sucedida do sensor.
+- `contador_inicial`: valor do registrador no primeiro ciclo de monitoramento.
+- `contador_final`: valor do registrador no encerramento da sessão.
+
+---
+
+## 15. Matriz de Governança dos Agentes Especializados (`AGENTS.md`)
 
 O desenvolvimento da V4 seguiu estritamente as atribuições dos papéis especializados definidos no projeto:
 
@@ -443,4 +543,5 @@ O desenvolvimento da V4 seguiu estritamente as atribuições dos papéis especia
 | **Failure Analyst** | Identificou os riscos de oscilação (*hunting*), saturação e o conflito histórico de mapeamento da enchedora, garantindo o enum de diagnóstico com códigos 0 a 99. |
 | **Industrial Deployment** | Garantiu a prontidão para produção: complexidade $O(1)$, watchdog de 5 minutos para dados congelados no Grafana, independência de intervenção física e mapeamento para SCL/IEC 61131-3. |
 | **Reviewer** | Conferiu a consistência técnica integral, a ausência de saltos em degrau, a estabilidade das equações e a integridade de todas as métricas industriais. |
+
 

@@ -19,22 +19,22 @@ def rampa_trapezoidal(x, a, b, c, d):
     return 0.0
 
 class ControladorVelocidadeV4:
-    def __init__(self, velocidade_nominal=60000, v_atual_inicial=None, max_rampa=1000.0, banda_morta_cph=300.0):
+    def __init__(self, velocidade_nominal=__VEL_NOMINAL__, v_atual_inicial=None, max_rampa=__MAX_RAMPA__, banda_morta_cph=300.0):
         self.vel_nom = float(velocidade_nominal)
-        self.b1_lim = 20.66
-        self.b2_lim = 40.98
-        self.b3_lim = 58.45
-        self.b4_lim = 70.82
-        self.rampa_b2 = 10.60
-        self.rampa_b3 = 20.98
-        self.antecip_b1 = 7.79
-        self.antecip_b4 = 24.00
-        self.min_mod = 0.899
-        self.peso_retomada = 0.100
-        self.fator_sprint = 1.010
+        self.b1_lim = __B1_OPT__
+        self.b2_lim = __B2_OPT__
+        self.b3_lim = __B3_OPT__
+        self.b4_lim = __B4_OPT__
+        self.rampa_b2 = __RAMPA_B2_OPT__
+        self.rampa_b3 = __RAMPA_B3_OPT__
+        self.antecip_b1 = __ANTECIP_B1_OPT__
+        self.antecip_b4 = __ANTECIP_B4_OPT__
+        self.min_mod = __MIN_MOD_OPT__
+        self.peso_retomada = __PESO_RETOMADA_OPT__
+        self.fator_sprint = __FATOR_SPRINT_OPT__
         self.max_rampa = float(max_rampa)
         self.banda_morta = float(banda_morta_cph)
-        self.alpha_ewma = 0.65
+        self.alpha_ewma = __ALPHA_EWMA__
 
         # Estado interno dos filtros e rampa mecânica
         self.b1_f = 50.0

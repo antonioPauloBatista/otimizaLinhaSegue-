@@ -1,0 +1,23 @@
+{
+  "config": {
+    "grafana_url": "http://172.23.224.145:3000",
+    "grafana_user": "admin",
+    "grafana_password": "!ambev2021",
+    "database": "soda-template",
+    "datasource_selector": "8"
+  },
+  "queries": [
+    {
+      "description": "Enchedora contagem de produto",
+      "equipment_type": "Filler",
+      "anticipation": false,
+      "tags": {
+        "equipment_name": "NS-05410-ENCHEDORA 01",
+        "rule": ""
+      },
+      "fields": {
+        "Packaging Machine Production Counter - Total": "1.14.37.162.2.24-1.32-1.0.7275"
+      }
+    }
+  ]
+}

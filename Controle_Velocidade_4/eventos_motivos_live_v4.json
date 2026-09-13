@@ -1,0 +1,14 @@
+[
+  {
+    "inicio": "2026-09-12 20:33:12",
+    "fim": "2026-09-12 20:34:58",
+    "duracao_segundos": 30.0,
+    "motivo_id": 1,
+    "motivo_codigo": "SPRINT_SOBREVELOCIDADE",
+    "motivo_descricao": "Sobrevelocidade / Sprint (> 100%) - Linha Desimpedida",
+    "maquina_causadora": "Nenhuma (Oportunidade de Ganho)",
+    "localizacao_linha": "Linha Livre",
+    "categoria": "OPORTUNIDADE",
+    "velocidade_cph": 60600.0
+  }
+]

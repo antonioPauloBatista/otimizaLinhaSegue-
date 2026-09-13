@@ -1,0 +1,40 @@
+===========================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE V4: BALANÇO + MOTIVOS   
+===========================================================================
+➔ Produção Real Registrada no Histórico : 19,713,614 unidades.
+➔ Produção Simulada Otimizada V4       : 29,024,561 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO (V4)       : +9,310,946 unidades (+47.23%)
+
+[MÉTRICAS DE PARADAS E ESTABILIDADE DE PROCESSO]
+➔ Amostras em Risco de Soco Mecânico no Histórico : 13362
+➔ Amostras em Risco na Simulação Otimizada V4      : 53
+➔ Amostras Críticas Evitadas                       : 13309 (99.6% de melhoria)
+➔ Tempo Extra de Uptime Recuperado                : 110h 54min
+
+[DISTRIBUIÇÃO DOS MOTIVOS DE OPERAÇÃO NO HISTÓRICO]
+   ↳ [ID 20 - ACUMULO_SAIDA_B3          ]:  14422 amostras ( 16.7%) | Acúmulo de Garrafas no Buffer de Saída (B3 Enchedora-Pasteurizador)
+   ↳ [ID 99 - PARADA_PROPRIA_ENCHEDORA  ]:  13666 amostras ( 15.8%) | Parada Local da Enchedora (Falha Mecânica / Elétrica / Operador / Cacos / Válvulas com Linha Apta)
+   ↳ [ID 10 - FALTA_ENTRADA_B2          ]:  12917 amostras ( 14.9%) | Falta de Garrafas no Buffer de Entrada (B2 ECI-Enchedora)
+   ↳ [ID 25 - RETOMADA_ACELERANDO_SAIDA ]:  10248 amostras ( 11.9%) | Saída com Acúmulo, mas Máquina da Saída Acelerando (Retomada Sincronizada)
+   ↳ [ID 30 - CONFLITO_ENTRADA_SAIDA    ]:   7492 amostras (  8.7%) | Duplo Conflito: Falta na Entrada (B2) e Acúmulo na Saída (B3) simultâneos
+   ↳ [ID 91 - PARADA_INTERTRAV_ENTRADA_ECI]:   7483 amostras (  8.7%) | Parada Crítica do CLP por Falta de Garrafas na Entrada (B2 <= 10%)
+   ↳ [ID  0 - NORMAL_FULL               ]:   5657 amostras (  6.5%) | Velocidade Nominal (100%) - Fluxo Normal
+   ↳ [ID 80 - MAQUINA_SAIDA_LENTA       ]:   4774 amostras (  5.5%) | Balanço de Massa: Máquina da Saída (Pasteurizador) operando em velocidade reduzida
+   ↳ [ID 60 - LIMITADOR_RAMPA_MECANICA  ]:   4599 amostras (  5.3%) | Transição em Rampa Suave Limitada pelo Slew Rate Mecânico
+   ↳ [ID 92 - PARADA_INTERTRAV_SAIDA_PASTEURIZADOR]:   3032 amostras (  3.5%) | Parada Crítica do CLP por Acúmulo de Garrafas na Saída (B3 >= 90%)
+   ↳ [ID  1 - SPRINT_SOBREVELOCIDADE    ]:    921 amostras (  1.1%) | Sobrevelocidade / Sprint (> 100%) - Linha Desimpedida
+   ↳ [ID 70 - MAQUINA_ENTRADA_LENTA     ]:    815 amostras (  0.9%) | Balanço de Massa: Máquina da Entrada (ECI) operando em velocidade reduzida
+   ↳ [ID 50 - FEEDFORWARD_ALERTA_B4     ]:    306 amostras (  0.4%) | Alerta Feedforward: Acúmulo Extremo na Saída (B4 Pós-Pasteurizador)
+   ↳ [ID 40 - FEEDFORWARD_ALERTA_B1     ]:     98 amostras (  0.1%) | Alerta Feedforward: Falta Extrema na Entrada (B1 Despaletizadora)
+
+[PARÂMETROS OTIMIZADOS V4]
+➔ Velocidade Nominal Enchedora: 60,000 CPH
+➔ Piso de Modulação Seguro     : 89.9% (53,947 CPH)
+➔ Teto Sprint / Sobrevelocidade: 101.0% (60,600 CPH)
+➔ Rampa Mecânica Máxima (Slew) : 1000 CPH por passo de 30s (33.3 CPH/s)
+➔ Gatilho Falta Entrada (B2)   : < 41.0% (Rampa: 10.6%)
+➔ Gatilho Acúmulo Saída (B3)   : > 58.4% (Rampa: 21.0%)
+➔ Feedforward Extremo B1       : < 20.7% (Margem: 7.8%)
+➔ Feedforward Extremo B4       : > 70.8% (Margem: 24.0%)
+➔ Fator Retomada Sincronizada  : 10.0% de alívio quando a jusante está acelerando
+===========================================================================

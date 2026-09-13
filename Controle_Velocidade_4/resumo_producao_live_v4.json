@@ -1,0 +1,43 @@
+{
+  "inicio": "2026-09-13 14:00:00",
+  "fim": "2026-09-13 20:16:49",
+  "duracao_segundos": 1.0,
+  "total_ciclos": 3,
+  "proporcao_tempo_ligado": {
+    "real_ligada_segundos": 0.0,
+    "real_ligada_percentual": 0.0,
+    "real_parada_segundos": 0.0,
+    "real_parada_percentual": 0.0,
+    "v4_ligado_segundos": 0.0,
+    "v4_ligado_percentual": 0.0,
+    "v4_parado_segundos": 0.0,
+    "v4_parado_percentual": 0.0,
+    "ganho_tempo_ligado_percentual": 0.0,
+    "detalhamento_v4": {
+      "nominal_segundos": 0.0,
+      "nominal_percentual": 0.0,
+      "sprint_segundos": 0.0,
+      "sprint_percentual": 0.0,
+      "modulando_segundos": 0.0,
+      "modulando_percentual": 0.0
+    }
+  },
+  "resumo_producao": {
+    "garrafas_reais": 750.0,
+    "garrafas_v4": 0.0,
+    "saldo_garrafas": 0.0,
+    "percentual_ganho": 0.0,
+    "vazao_media_real_cph": 0.0,
+    "vazao_media_v4_cph": 0.0,
+    "garrafas_sensor_fisico": 750.0,
+    "ciclos_validacao_sensor": 3,
+    "contador_inicial": 10000.0,
+    "contador_final": 10750.0
+  },
+  "continuidade_operacional": {
+    "tempo_parada_evitado_segundos": 0.0,
+    "taxa_recuperacao_paradas_percentual": 0.0,
+    "ciclos_manteria_rodando": 0,
+    "ciclos_parada_inevitavel": 0
+  }
+}

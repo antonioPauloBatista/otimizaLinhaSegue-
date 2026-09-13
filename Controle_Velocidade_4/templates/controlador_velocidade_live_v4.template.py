@@ -19,7 +19,7 @@ def main():
     print("Injetando parâmetros otimizados V4 com enum de causas-raiz...")
     print(f"Rastreamento de eventos ativo -> Arquivo JSON: '{ARQUIVO_JSON_LIVE}'\n")
 
-    ctrl = ControladorVelocidadeV4(velocidade_nominal=60000)
+    ctrl = ControladorVelocidadeV4(velocidade_nominal=__VEL_NOMINAL__)
 
     while True:
         try:
@@ -38,7 +38,7 @@ def main():
                 registrar_evento=True, arquivo_json=ARQUIVO_JSON_LIVE
             )
             info = ctrl.obter_motivo(motivo_id)
-            perc = round((vel / float(60000)) * 100.0, 1)
+            perc = round((vel / float(__VEL_NOMINAL__)) * 100.0, 1)
 
             print("-" * 75)
             if perc > 100.0:
