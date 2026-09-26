@@ -32,10 +32,15 @@ DATASOURCE_SELECTOR = "13"
 BUCKET = "Segue"
 MEASUREMENT = "NS-541"
 
-VEL_NOMINAL = 60000.0
+DIR_SCRIPT = os.path.dirname(os.path.abspath(__file__))
+VEL_NOMINAL = 94500.0
 LIMIAR_PARADA_CPH = 10000.0
-ARQUIVO_JSON_GRAFANA = "eventos_motivos_grafana_v4.json"
-ARQUIVO_CONFIG = "config_colunas.json"
+TEMPO_RAMPA_SUBIDA_S = 10.0
+TEMPO_RAMPA_DESCIDA_S = 8.0
+ARQUIVO_JSON_GRAFANA = os.path.join(DIR_SCRIPT, "eventos_motivos_grafana_v4.json")
+ARQUIVO_CSV_GRAFANA = os.path.join(DIR_SCRIPT, "dados_live_grafana_v4.csv")
+ARQUIVO_CONFIG = os.path.join(DIR_SCRIPT, "config_colunas.json")
+ARQUIVO_PARAMETROS = os.path.join(DIR_SCRIPT, "parametros_controle_v4.json")
 
 COL_B1 = "accumulation_percentage_lgf_to_uip_null"
 COL_B2 = "accumulation_percentage_uip_to_ech_null"
@@ -49,6 +54,12 @@ if os.path.exists(ARQUIVO_CONFIG):
     try:
         with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
             cfg = json.load(f)
+            if "Velocidade_Nominal_ECH" in cfg:
+                VEL_NOMINAL = float(cfg["Velocidade_Nominal_ECH"])
+            if "Limiar_Velocidade_Manutencao" in cfg:
+                LIMIAR_PARADA_CPH = float(cfg["Limiar_Velocidade_Manutencao"])
+            TEMPO_RAMPA_SUBIDA_S = float(cfg.get("Tempo_Rampa_Subida_s", cfg.get("tempo_rampa_subida_s", TEMPO_RAMPA_SUBIDA_S)))
+            TEMPO_RAMPA_DESCIDA_S = float(cfg.get("Tempo_Rampa_Descida_s", cfg.get("tempo_rampa_descida_s", TEMPO_RAMPA_DESCIDA_S)))
             COL_B1 = cfg.get("Col_Buffer_Antes_Entrada", COL_B1)
             COL_B2 = cfg.get("Col_Buffer_Entrada", COL_B2)
             COL_B3 = cfg.get("Col_Buffer_Saida", COL_B3)
@@ -60,7 +71,70 @@ if os.path.exists(ARQUIVO_CONFIG):
             MEASUREMENT = cfg.get("Grafana_Measurement", cfg.get("Measurement", MEASUREMENT))
             BUCKET = cfg.get("Grafana_Bucket", cfg.get("Bucket", BUCKET))
             DATASOURCE_SELECTOR = cfg.get("Grafana_Datasource", cfg.get("Datasource_Selector", DATASOURCE_SELECTOR))
+            csv_cfg = cfg.get("Arquivo_CSV_Live", "dados_live_grafana_v4.csv")
+            ARQUIVO_CSV_GRAFANA = csv_cfg if os.path.isabs(csv_cfg) else os.path.join(DIR_SCRIPT, csv_cfg)
     except Exception: pass
+
+if os.path.exists(ARQUIVO_PARAMETROS):
+    try:
+        with open(ARQUIVO_PARAMETROS, "r", encoding="utf-8") as f:
+            p_cfg = json.load(f)
+            if "tempo_rampa_subida_s" in p_cfg:
+                TEMPO_RAMPA_SUBIDA_S = float(p_cfg["tempo_rampa_subida_s"])
+            if "tempo_rampa_descida_s" in p_cfg:
+                TEMPO_RAMPA_DESCIDA_S = float(p_cfg["tempo_rampa_descida_s"])
+    except Exception: pass
+
+def inicializar_csv_live(caminho_csv):
+    """Inicializa o arquivo CSV local com cabeçalho padronizado se ainda não existir."""
+    colunas = [
+        "timestamp",
+        "status_conexao",
+        "b1_lgf_pct",
+        "b2_eci_pct",
+        "b3_ech_pct",
+        "b4_rot_pct",
+        "v_real_cph",
+        "v_in_eci_cph",
+        "v_out_pz_cph",
+        "v_otimizada_v4_cph",
+        "percentual_nominal_v4",
+        "motivo_id",
+        "motivo_codigo",
+        "maquina_causadora",
+        "garrafas_reais_ciclo",
+        "garrafas_v4_ciclo",
+        "saldo_garrafas_ciclo",
+        "garrafas_reais_total",
+        "garrafas_v4_total",
+        "saldo_garrafas_total",
+        "contador_fisico_total",
+        "delta_contador_sensor"
+    ]
+    precisa_cabecalho = not os.path.exists(caminho_csv) or os.path.getsize(caminho_csv) == 0
+    if precisa_cabecalho:
+        try:
+            pasta = os.path.dirname(os.path.abspath(caminho_csv))
+            if pasta:
+                os.makedirs(pasta, exist_ok=True)
+            with open(caminho_csv, "w", encoding="utf-8") as f:
+                f.write(",".join(colunas) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            print(f"📄 Arquivo CSV inicializado com sucesso em: '{caminho_csv}'")
+        except Exception as e:
+            print(f"⚠️ Erro ao criar cabeçalho do CSV '{caminho_csv}': {e}")
+
+def gravar_linha_csv_live(caminho_csv, dados_linha):
+    """Grava linha no CSV com flush imediato no disco (segurança contra quedas de energia/rede)."""
+    try:
+        linha_formatada = ",".join(str(item) for item in dados_linha) + "\n"
+        with open(caminho_csv, "a", encoding="utf-8") as f:
+            f.write(linha_formatada)
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception as e:
+        print(f"⚠️ Erro ao gravar linha no CSV '{caminho_csv}': {e}")
 
 def resolver_info_datasource(session, headers, grafana_url, selector="8", fallback_name="SODA Template"):
     ds_url = f"{grafana_url.rstrip('/')}/api/datasources"
@@ -467,11 +541,14 @@ def gerar_relatorio_sessao(metricas, controlador, arquivo_saida="resumo_producao
     if metricas.get("ciclos_validacao_sensor", 0) > 0 and metricas.get("contador_final") is not None:
         tot_sensor = metricas.get("garrafas_fisicas_sensor_total", 0.0)
         c_fim = metricas.get("contador_final", 0.0)
-        info_sensor = f" [Validada por Sensor Físico: {tot_sensor:,.0f} gf | Contador: {c_fim:,.0f} gf | Vazão: {v_media_real:,.0f} garrafas/h]"
+        linhas.append(f"➔ Produção Real Estimada      : {garrafas_reais:,.1f} garrafas (Vazão: {v_media_real:,.0f} garrafas/h)")
+        linhas.append(f"➔ Auditoria Sensor Físico     : [Validada por Sensor Físico: {tot_sensor:,.0f} gf | Contador: {c_fim:,.0f} gf]")
     elif metricas.get("contador_final") is not None:
-        info_sensor = f" [Contador Físico: {metricas['contador_final']:,.0f} gf | Vazão: {v_media_real:,.0f} garrafas/h]"
+        linhas.append(f"➔ Produção Real Estimada      : {garrafas_reais:,.1f} garrafas (Vazão: {v_media_real:,.0f} garrafas/h)")
+        linhas.append(f"➔ Contador Físico Final       : [Contador: {metricas['contador_final']:,.0f} gf]")
+    else:
+        linhas.append(f"➔ Produção Real Estimada      : {garrafas_reais:,.1f} garrafas{info_sensor}")
 
-    linhas.append(f"➔ Produção Real Registrada    : {garrafas_reais:,.1f} garrafas{info_sensor}")
     linhas.append(f"➔ Produção Controlador        : {garrafas_v4:,.1f} garrafas (Vazão Média: {v_media_v4:,.0f} garrafas/h)")
     linhas.append(f"➔ SALDO DE GARRAFAS GERADAS   : {sinal}{garrafas_extras:,.1f} garrafas ({sinal}{perc_ganho:.2f}%)")
     linhas.append("-" * 80)
@@ -579,6 +656,10 @@ def main():
     parser.add_argument("--janela", default="30m", help="Janela de busca das últimas medições (ex: 15m, 30m, 1h, 6h, 24h, 30d)")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout da requisição HTTP ao Grafana em segundos (default: 30)")
     parser.add_argument("--query-json", default=None, help="Caminho para o parametros_query.json com a query do contador físico")
+    parser.add_argument("--csv", default=ARQUIVO_CSV_GRAFANA, help="Caminho do arquivo CSV para gravação contínua dos ciclos (default: dados_live_grafana_v4.csv)")
+    parser.add_argument("--vel-nominal", type=float, default=VEL_NOMINAL, help="Velocidade nominal máxima da enchedora em CPH (default: %(default)s)")
+    parser.add_argument("--tempo-subida", type=float, default=TEMPO_RAMPA_SUBIDA_S, help="Tempo em segundos de 0 a 100%% nominal (default: %(default)s s)")
+    parser.add_argument("--tempo-descida", type=float, default=TEMPO_RAMPA_DESCIDA_S, help="Tempo em segundos de 100%% nominal a 0 (default: %(default)s s)")
     args = parser.parse_args()
 
     grafana_url = args.url.rstrip("/")
@@ -587,6 +668,7 @@ def main():
     ds_selector = args.ds
     delta_janela = interpretar_janela(args.janela)
     timeout_req = int(args.timeout)
+    arquivo_csv_ativo = args.csv if os.path.isabs(args.csv) else os.path.join(DIR_SCRIPT, args.csv)
 
     print("=" * 80)
     print("   CONTROLADOR DE VELOCIDADE LIVE GRAFANA V4 (BALANÇO + MOTIVOS)")
@@ -594,6 +676,8 @@ def main():
     print(f"Conectando ao Grafana: {grafana_url} a cada 30 segundos...")
     print(f"Datasource: '{ds_selector}' | Measurement: '{measurement_ativo}' | Bucket: '{bucket_ativo}'")
     print(f"Rastreamento de eventos ativo -> Arquivo JSON: '{ARQUIVO_JSON_GRAFANA}'")
+    inicializar_csv_live(arquivo_csv_ativo)
+    print(f"Gravação contínua CSV ativa -> Arquivo: '{arquivo_csv_ativo}' (atualizado a cada ciclo com flush)")
     print("Pressione Ctrl+C a qualquer momento para finalizar e emitir o Relatório.\n")
 
     session = requests.Session()
@@ -661,7 +745,14 @@ def main():
         print("ℹ️ Validação Física: 'parametros_query.json' não localizado (produção estimada via velocidade do motor)")
 
     ds_query_url = f"{grafana_url}/api/ds/query"
-    controlador = ControladorVelocidadeV4(velocidade_nominal=VEL_NOMINAL)
+    controlador = ControladorVelocidadeV4(
+        velocidade_nominal=args.vel_nominal,
+        tempo_rampa_subida_s=args.tempo_subida,
+        tempo_rampa_descida_s=args.tempo_descida
+    )
+    print(f"Rampa Mecânica Referência (Velocidade Máxima Nominal: {controlador.vel_nom:,.0f} CPH):")
+    print(f"   ↳ Subida : {controlador.tempo_rampa_subida_s:.1f}s de 0 a 100% ({controlador.taxa_subida_cph_s:,.0f} CPH/s)")
+    print(f"   ↳ Descida: {controlador.tempo_rampa_descida_s:.1f}s de 100% a 0 ({controlador.taxa_descida_cph_s:,.0f} CPH/s)\n")
 
     hora_inicio = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -878,7 +969,12 @@ def main():
 
                 diagnostico_txt = f"🔴 MÁQUINA REAL PARADA (0 garrafas/h). Controlador parado em segurança por [{info.get('codigo')}]."
                 if contador_atual is not None:
-                    validacao_txt = f"🛑 Parada Real Confirmada (+0 gf) | Contador Físico: {contador_atual:,.0f} gf"
+                    if delta_contador is not None and metricas["total_ciclos"] > 0 and delta_contador > 0:
+                        metricas["garrafas_fisicas_sensor_total"] += delta_contador
+                        metricas["ciclos_validacao_sensor"] += 1
+                        validacao_txt = f"🛑 Parada Real (+{delta_contador:,.0f} gf remanescentes no sensor) | Contador: {contador_atual:,.0f} gf"
+                    else:
+                        validacao_txt = f"🛑 Parada Real Confirmada (+0 gf) | Contador Físico: {contador_atual:,.0f} gf"
                 else:
                     detalhe_off = f": {erro_contador}" if erro_contador else ""
                     validacao_txt = f"🛑 Parada Real (0 garrafas/h{detalhe_off})"
@@ -894,25 +990,25 @@ def main():
 
                 v4_ligado = (v_otim >= LIMIAR_PARADA_CPH)
 
-                # Produção real validada por sensor físico ou estimada por velocidade
+                # Produção teórica integrada por velocidade (base homogênea para cálculo de saldo)
+                g_real_ciclo = (v_real * delta_t_s) / 3600.0
+                g_v4_ciclo = (v_otim * delta_t_s) / 3600.0
+                g_extra_ciclo = g_v4_ciclo - g_real_ciclo
+
+                # Auditoria com sensor físico real da linha (fotocélula de descarga)
                 if delta_contador is not None and metricas["total_ciclos"] > 0:
-                    g_real_ciclo = float(delta_contador)
                     metricas["garrafas_fisicas_sensor_total"] += delta_contador
                     metricas["ciclos_validacao_sensor"] += 1
                     if delta_contador == 0.0 and v_real >= LIMIAR_PARADA_CPH:
                         validacao_txt = f"⚠️ Motor Girando sem Garrafas (+0 gf no sensor) | Contador: {contador_atual:,.0f} gf"
                     else:
-                        validacao_txt = f"✅ Produção Real Confirmada: +{delta_contador:,.0f} gf físicas no ciclo | Contador: {contador_atual:,.0f} gf"
+                        validacao_txt = f"✅ Sensor Físico Auditado: +{delta_contador:,.0f} gf no ciclo | Contador: {contador_atual:,.0f} gf"
                 else:
-                    g_real_ciclo = (v_real * delta_t_s) / 3600.0
                     if contador_atual is not None:
-                        validacao_txt = f"ℹ️ Contador Físico Inicializado: {contador_atual:,.0f} gf | Estimativa por velocidade no 1º ciclo"
+                        validacao_txt = f"ℹ️ Contador Físico Inicializado: {contador_atual:,.0f} gf"
                     else:
                         detalhe_off = f": {erro_contador}" if erro_contador else ""
-                        validacao_txt = f"ℹ️ Produção estimada pela velocidade do motor (contador físico offline{detalhe_off})"
-
-                g_v4_ciclo = (v_otim * delta_t_s) / 3600.0
-                g_extra_ciclo = g_v4_ciclo - g_real_ciclo
+                        validacao_txt = f"ℹ️ Contador Físico Offline{detalhe_off}"
 
                 metricas["tempo_real_ligado_s"] += delta_t_s
 
@@ -940,6 +1036,33 @@ def main():
             metricas["contagem_motivos"][motivo_id] = metricas["contagem_motivos"].get(motivo_id, 0) + 1
             metricas["tempo_motivos_s"][motivo_id] = metricas["tempo_motivos_s"].get(motivo_id, 0.0) + delta_t_s
 
+            # Gravação em tempo real da linha no CSV com flush imediato no disco
+            linha_csv = [
+                hora_str,
+                "ONLINE" if conexao_ok else "OFFLINE",
+                f"{b1:.2f}",
+                f"{b2:.2f}",
+                f"{b3:.2f}",
+                f"{b4:.2f}",
+                f"{v_real:.1f}",
+                f"{vin:.1f}",
+                f"{vout:.1f}",
+                f"{v_otim:.1f}",
+                f"{perc:.1f}",
+                motivo_id,
+                f'"{info.get("codigo", "OUTRO")}"',
+                f'"{info.get("maquina_causadora", "Geral")}"',
+                f"{g_real_ciclo:.1f}",
+                f"{g_v4_ciclo:.1f}",
+                f"{g_extra_ciclo:+.1f}",
+                f"{metricas['garrafas_reais_total']:.1f}",
+                f"{metricas['garrafas_v4_total']:.1f}",
+                f"{metricas['garrafas_extras_total']:+.1f}",
+                f"{contador_atual:.1f}" if contador_atual is not None else "",
+                f"{delta_contador:.1f}" if delta_contador is not None else ""
+            ]
+            gravar_linha_csv_live(arquivo_csv_ativo, linha_csv)
+
             t_tot = max(1.0, metricas["tempo_total_s"])
             p_real_lig = (metricas["tempo_real_ligado_s"] / t_tot) * 100.0
             p_v4_lig = (metricas["tempo_v4_ligado_s"] / t_tot) * 100.0
@@ -956,6 +1079,7 @@ def main():
             print(f"   ↳ Velocidade Real   : {v_real:,.0f} garrafas/h | Controlador: {v_otim:,.0f} garrafas/h ({perc}%) | Motivo [{motivo_id} - {info.get('codigo')}]: {info.get('descricao')}")
             print(f"   ↳ Validação Física  : {validacao_txt}")
             print(f"   ↳ Diagnóstico Uptime   : {diagnostico_txt}")
+            print(f"   ↳ Registro CSV        : Salvo em '{arquivo_csv_ativo}' (Ciclo #{metricas['total_ciclos']} gravado com flush)")
             print(f"   ↳ RESUMO TEMPO LIGADO  : Real: {p_real_lig:5.1f}% ({metricas['tempo_real_ligado_s']/60.0:.1f}min) | Controlador: {p_v4_lig:5.1f}% ({metricas['tempo_v4_ligado_s']/60.0:.1f}min) | Ganho: {sinal_upt}{ganho_uptime_p:.1f}% ({metricas['tempo_parada_evitada_s']/60.0:.1f}min evitados)")
             print(f"   ↳ RESUMO DE PRODUÇÃO   : Real: {metricas['garrafas_reais_total']:,.1f} gf | Controlador: {metricas['garrafas_v4_total']:,.1f} gf | Saldo: {sinal_prod}{metricas['garrafas_extras_total']:,.1f} gf ({sinal_prod}{perc_prod_ganho:.1f}%)")
             print("-" * 80)
@@ -967,6 +1091,7 @@ def main():
             controlador.finalizar_eventos(timestamp=agora_str, arquivo_json=ARQUIVO_JSON_GRAFANA)
             print("\n🚨 Interrupção manual detectada (Ctrl+C). Processando relatório final...")
             gerar_relatorio_sessao(metricas, controlador)
+            print(f"Histórico contínuo preservado em: '{arquivo_csv_ativo}' ({metricas['total_ciclos']} ciclos salvos).")
             print(f"Eventos salvos em '{ARQUIVO_JSON_GRAFANA}'. Encerrando com sucesso.\n")
             break
 

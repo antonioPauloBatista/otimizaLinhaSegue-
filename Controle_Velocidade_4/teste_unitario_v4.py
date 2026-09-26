@@ -16,15 +16,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from funcao_controle_v4 import ControladorVelocidadeV4
 
 def test_slew_rate_e_motivo():
-    print("Testando Slew Rate (Rampa Mecânica Suave) e Motivos...")
+    print("Testando Slew Rate Assimétrico Proporcional à Velocidade da Linha...")
+    # 1. Teste para Linha de 60.000 CPH (4.2% descida = 2520 CPH, 1.7% subida = 1020 CPH)
     ctrl = ControladorVelocidadeV4(velocidade_nominal=60000, v_atual_inicial=60000)
+    assert ctrl.max_rampa_descida == 2520.0, f"Rampa descida esperada 2520.0, obtido {ctrl.max_rampa_descida}"
+    assert ctrl.max_rampa_subida == 1020.0, f"Rampa subida esperada 1020.0, obtido {ctrl.max_rampa_subida}"
     
-    # Degrau de falta de entrada (B2 = 5%)
+    # Degrau de falta de entrada (B2 = 5%) -> Deve descer rápido com max_rampa_descida
     v1, m1 = ctrl.calcular_velocidade(50, 5, 50, 50, v_in=60000, v_out=60000, delta_t_s=30, retornar_motivo=True)
-    delta = abs(v1 - 60000)
-    assert delta <= 3000.1, f"Falha no slew rate! Variação de {delta} CPH foi maior que 3000 CPH/passo."
+    delta_descida = 60000 - v1
+    assert abs(delta_descida - 2520.0) < 1.0, f"Descida rápida falhou! Esperado 2520 CPH, variou {delta_descida} CPH."
     assert m1 == 10, f"Motivo incorreto para falta de entrada: {m1}"
-    print(f"  ✅ Slew rate OK (Delta = {delta:.0f} CPH) | Motivo ID [{m1} - FALTA_ENTRADA_B2]")
+    print(f"  ✅ Descida Rápida Protetiva OK: -{delta_descida:.0f} CPH/passo (84 CPH/s) | Motivo ID [{m1} - FALTA_ENTRADA_B2]")
+
+    # Degrau de retomada (linha desimpedida) -> Deve subir suave com max_rampa_subida
+    v_antes_subir = v1
+    v2, _ = ctrl.calcular_velocidade(50, 50, 50, 50, v_in=60000, v_out=60000, delta_t_s=30, retornar_motivo=True)
+    delta_subida = v2 - v_antes_subir
+    assert abs(delta_subida - 1020.0) < 1.0, f"Subida suave falhou! Esperado 1020 CPH, variou {delta_subida} CPH."
+    print(f"  ✅ Subida Suave Cautelosa OK: +{delta_subida:.0f} CPH/passo (34 CPH/s)")
+
+    # 2. Teste de Proporcionalidade Automática para Linha de 45.000 CPH (ex: PG502)
+    ctrl_45k = ControladorVelocidadeV4(velocidade_nominal=45000, v_atual_inicial=45000)
+    assert ctrl_45k.max_rampa_descida == 1890.0, f"Rampa descida 45k esperada 1890.0, obtido {ctrl_45k.max_rampa_descida}"
+    assert ctrl_45k.max_rampa_subida == 765.0, f"Rampa subida 45k esperada 765.0, obtido {ctrl_45k.max_rampa_subida}"
+    print(f"  ✅ Autoajuste Universal Linha 45k OK: Descida = {ctrl_45k.max_rampa_descida:.0f} CPH | Subida = {ctrl_45k.max_rampa_subida:.0f} CPH")
 
 def test_sprint_e_motivo():
     print("Testando Modo Sprint / Sobrevelocidade e Motivo...")
@@ -86,9 +102,9 @@ def test_convergencia_exata_sem_offset_banda_morta():
     # Velocidade inicial 58.250 CPH força um resíduo de 250 CPH (< 300 CPH da banda morta) ao atingir 59.750 CPH
     ctrl = ControladorVelocidadeV4(velocidade_nominal=60000, v_atual_inicial=58250, max_rampa=500.0, banda_morta_cph=300.0)
     
-    # Executa ciclos sucessivos com buffers desimpedidos da V4
+    # Executa ciclos sucessivos com buffers nominais desimpedidos da V4
     for _ in range(8):
-        v, _ = ctrl.calcular_velocidade(50, 50, 45, 30, v_in=60000, v_out=60000, delta_t_s=30)
+        v, _ = ctrl.calcular_velocidade(50, 50, 56, 30, v_in=60000, v_out=60000, delta_t_s=30)
     
     # O código antigo congelava em 59.750 CPH porque |60000 - 59750| = 250 < 300 CPH
     # Com a correção, a velocidade atinge EXATAMENTE 60000.0 CPH
@@ -173,7 +189,7 @@ def test_eventos_json_inicio_fim():
 
     # 1. Enchedora a 100% nominal (Motivo 0 - NORMAL_FULL) -> NÃO deve gerar evento no JSON
     v1, m1 = ctrl.calcular_velocidade(
-        50, 50, 50, 30, v_in=60000, v_out=60000, delta_t_s=30,
+        50, 50, 60, 30, v_in=60000, v_out=60000, delta_t_s=30,
         retornar_motivo=True, timestamp="2026-09-12 14:00:00",
         registrar_evento=True, arquivo_json=arquivo_teste
     )
@@ -209,7 +225,7 @@ def test_eventos_json_inicio_fim():
 
     # 4. Linha destrava e entrada recupera buffer -> Enchedora inicia rampa suave (motivo 60 - LIMITADOR_RAMPA_MECANICA)
     v4, m4 = ctrl.calcular_velocidade(
-        50, 70, 45, 30, v_in=60000, v_out=60000, delta_t_s=30,
+        50, 50, 60, 30, v_in=60000, v_out=60000, delta_t_s=30,
         retornar_motivo=True, timestamp="2026-09-12 14:01:30",
         registrar_evento=True, arquivo_json=arquivo_teste
     )
@@ -218,12 +234,21 @@ def test_eventos_json_inicio_fim():
     assert ctrl.evento_atual["maquina_causadora"] == "Enchedora (Inércia Mecânica)"
     print(f"  ✅ Transição de Causa: Motivo 10 fechado, novo evento aberto ID [60 - {ctrl.evento_atual['motivo_codigo']}] (Rampa subindo a {v4:.0f} CPH).")
 
-    # 5. Rampa conclui e atinge 100% nominal (60.000 CPH, motivo 0) -> Todos os eventos encerrados
-    v5, m5 = ctrl.calcular_velocidade(
-        50, 70, 45, 30, v_in=60000, v_out=60000, delta_t_s=30,
-        retornar_motivo=True, timestamp="2026-09-12 14:02:00",
-        registrar_evento=True, arquivo_json=arquivo_teste
-    )
+    # 5. Rampa conclui subindo gradualmente até atingir 100% nominal (60.000 CPH, motivo 0)
+    ciclo_seg = 120
+    while True:
+        minutos = ciclo_seg // 60
+        segundos = ciclo_seg % 60
+        ts_passo = f"2026-09-12 14:{minutos:02d}:{segundos:02d}"
+        v5, m5 = ctrl.calcular_velocidade(
+            50, 50, 60, 30, v_in=60000, v_out=60000, delta_t_s=30,
+            retornar_motivo=True, timestamp=ts_passo,
+            registrar_evento=True, arquivo_json=arquivo_teste
+        )
+        if m5 == 0:
+            break
+        ciclo_seg += 30
+
     assert m5 == 0, f"Esperado motivo 0 (100% nominal), obtido {m5}"
     assert v5 == 60000.0, f"Esperado 60000 CPH, obtido {v5}"
     assert ctrl.evento_atual is None, "Evento deve ter sido encerrado após retorno aos 100%!"
@@ -238,7 +263,7 @@ def test_eventos_json_inicio_fim():
     ev_2 = ctrl.eventos_motivos[1]
     assert ev_2["motivo_id"] == 60
     assert ev_2["inicio"] == "2026-09-12 14:01:30"
-    assert ev_2["fim"] == "2026-09-12 14:02:00"
+    assert ev_2["fim"] == ts_passo
 
     print(f"  ✅ Fechamento dos Eventos após 100% Nominal:")
     print(f"     1. {ev_1['motivo_codigo']} ({ev_1['inicio']} ➔ {ev_1['fim']}) | Causa: {ev_1['maquina_causadora']}")
@@ -421,8 +446,93 @@ def test_contador_producao_e_validacao_fisica():
         assert js["resumo_producao"]["contador_final"] == 10750.0
         print("  ✅ Resumo estruturado JSON com dados do Sensor Físico OK.")
 
+def test_gravacao_continua_csv_live():
+    print("Testando Gravação Contínua de CSV em Tempo Real (Live Append com Flush)...")
+    import controlador_velocidade_grafana_v4 as c_grafana
+    arquivo_teste_csv = "teste_dados_live.csv"
+    if os.path.exists(arquivo_teste_csv):
+        os.remove(arquivo_teste_csv)
+    
+    # 1. Inicializa CSV e testa cabeçalho
+    c_grafana.inicializar_csv_live(arquivo_teste_csv)
+    assert os.path.exists(arquivo_teste_csv), "Arquivo CSV não foi criado!"
+    
+    # 2. Grava linha simulada
+    linha_1 = [
+        "2026-09-16 22:00:00", "ONLINE",
+        50.0, 48.0, 52.0, 30.0,
+        60000.0, 60000.0, 60000.0, 60000.0, 100.0,
+        0, '"NORMAL_FULL"', '"Linha"',
+        500.0, 500.0, 0.0,
+        500.0, 500.0, 0.0,
+        10500.0, 500.0
+    ]
+    c_grafana.gravar_linha_csv_live(arquivo_teste_csv, linha_1)
+
+    # 3. Lê com pandas para validar integridade
+    import pandas as pd
+    df_csv = pd.read_csv(arquivo_teste_csv)
+    assert len(df_csv) == 1, f"Esperado 1 linha de dados no CSV, obtido {len(df_csv)}"
+    assert "timestamp" in df_csv.columns
+    assert "v_otimizada_v4_cph" in df_csv.columns
+    assert "motivo_codigo" in df_csv.columns
+    assert df_csv["v_otimizada_v4_cph"].iloc[0] == 60000.0
+    assert df_csv["motivo_codigo"].iloc[0] == "NORMAL_FULL"
+    print(f"  ✅ Gravação Contínua CSV OK: {len(df_csv)} ciclo gravado e validado com sucesso ({len(df_csv.columns)} colunas).")
+    
+    if os.path.exists(arquivo_teste_csv):
+        os.remove(arquivo_teste_csv)
+
+def test_tempo_rampa_segundos_base_nominal_sem_sprint():
+    print("Testando Parametrização por Tempo em Segundos (Base Velocidade Máxima Nominal, sem Sprint)...")
+    v_nom = 94500.0
+    t_sub = 15.0   # 15s de 0 a 100%
+    t_desc = 8.0   # 8s de 100% a 0
+    ctrl = ControladorVelocidadeV4(
+        velocidade_nominal=v_nom,
+        v_atual_inicial=0.0,
+        tempo_rampa_subida_s=t_sub,
+        tempo_rampa_descida_s=t_desc
+    )
+
+    # 1. Validação da taxa física por segundo
+    taxa_sub_esperada = v_nom / t_sub      # 94500 / 15 = 6300.0 CPH/s
+    taxa_desc_esperada = v_nom / t_desc    # 94500 / 8 = 11812.5 CPH/s
+    assert abs(ctrl.taxa_subida_cph_s - taxa_sub_esperada) < 1e-4, f"Taxa subida incorreta: {ctrl.taxa_subida_cph_s} vs {taxa_sub_esperada}"
+    assert abs(ctrl.taxa_descida_cph_s - taxa_desc_esperada) < 1e-4, f"Taxa descida incorreta: {ctrl.taxa_descida_cph_s} vs {taxa_desc_esperada}"
+
+    # 2. Confirma que a base é estritamente a velocidade máxima nominal (e NÃO sobrevelocidade/sprint)
+    v_sprint_calc = v_nom * ctrl.fator_sprint
+    assert ctrl.taxa_subida_cph_s < (v_sprint_calc / t_sub), "Erro: Taxa de subida utilizou sobrevelocidade/sprint em vez da nominal máxima!"
+    print(f"  ✅ Base Nominal Auditada: Taxa calculada sobre {v_nom:,.0f} CPH (Sprint de {v_sprint_calc:,.0f} CPH não afeta a inclinação mecânica).")
+
+    # 3. Teste de subida passo a passo (delta_t_s = 1.0s)
+    # A partir de v_atual=0, em cada segundo deve subir exatamente 6300 CPH
+    # Condição desimpedida (B2=50, B3=50, V_in=94500, V_out=94500)
+    # Primeiro ciclo a partir de 0 entra no min_mod (v_reduz = 0.75 * 94500 = 70875)
+    v_apos_arranque, _ = ctrl.calcular_velocidade(50, 50, 50, 50, v_in=v_nom, v_out=v_nom, delta_t_s=1.0)
+    # Próximo passo de 1 segundo
+    v_passo_1s, _ = ctrl.calcular_velocidade(50, 50, 50, 50, v_in=v_nom, v_out=v_nom, delta_t_s=1.0)
+    delta_1s = v_passo_1s - v_apos_arranque
+    assert abs(delta_1s - taxa_sub_esperada) < 1.0, f"Degrau de 1s incorreto: {delta_1s} vs {taxa_sub_esperada}"
+    print(f"  ✅ Degrau por segundo OK: +{delta_1s:.0f} CPH a cada 1 segundo (atinge 100% nominal em {t_sub}s).")
+
+    # 4. Teste de descida protetiva em rampa
+    # Linha rodando a 94500, dá falta de garrafa na entrada (B2=5%)
+    ctrl_desc = ControladorVelocidadeV4(
+        velocidade_nominal=v_nom,
+        v_atual_inicial=v_nom,
+        tempo_rampa_subida_s=t_sub,
+        tempo_rampa_descida_s=t_desc
+    )
+    v_desc_1s, _ = ctrl_desc.calcular_velocidade(50, 5, 50, 50, v_in=v_nom, v_out=v_nom, delta_t_s=1.0)
+    delta_desc_1s = v_nom - v_desc_1s
+    assert abs(delta_desc_1s - taxa_desc_esperada) < 1.0, f"Degrau de descida 1s incorreto: {delta_desc_1s} vs {taxa_desc_esperada}"
+    print(f"  ✅ Frenagem controlada OK: -{delta_desc_1s:.0f} CPH a cada 1 segundo (freia 100% em {t_desc}s).")
+
 if __name__ == "__main__":
     test_slew_rate_e_motivo()
+    test_tempo_rampa_segundos_base_nominal_sem_sprint()
     test_sprint_e_motivo()
     test_retomada_e_motivo()
     test_trava_teto_retomada_seguranca()
@@ -434,7 +544,8 @@ if __name__ == "__main__":
     test_eventos_json_inicio_fim()
     test_live_grafana_garrafas_e_relatorio()
     test_contador_producao_e_validacao_fisica()
-    print("\n🎉 TODOS OS TESTES UNITÁRIOS COM IDENTIFICAÇÃO DE MÁQUINA, FAST-PATH, TRAVA DE TETO, BANDA MORTA, RELATÓRIO LIVE E CONTADOR FÍSICO PASSARAM COM SUCESSO!")
+    test_gravacao_continua_csv_live()
+    print("\n🎉 TODOS OS TESTES UNITÁRIOS COM IDENTIFICAÇÃO DE MÁQUINA, FAST-PATH, TRAVA DE TETO, BANDA MORTA, RELATÓRIO LIVE, CONTADOR FÍSICO, CSV CONTÍNUO E TEMPO EM SEGUNDOS PASSARAM COM SUCESSO!")
 
 
 

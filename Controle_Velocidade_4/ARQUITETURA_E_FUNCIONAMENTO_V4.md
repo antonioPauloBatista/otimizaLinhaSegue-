@@ -137,35 +137,42 @@ A rampa fuzzy trapezoidal opera continuamente dentro do motor de inferência:
 
 **Como atua:** O cálculo do setpoint alvo **nunca é em degrau liga/desliga**. Conforme o buffer varia ao longo dessa faixa percentual, o peso das regras varia suave e continuamente, modulando a velocidade de forma linear e proporcional ao nível físico do acúmulo (equivalente a uma rampa de bloco SCL no CLP).
 
-### 6.2 Camada 2: Limitador Temporal de Rampa (*Slew-Rate Limiter*)
+### 6.2 Camada 2: Limitador Temporal de Rampa (Slew-Rate Limiter por Tempo em Segundos)
 A segunda camada atua no domínio do tempo, antes do envio ao CLP:
-Mesmo que ocorra uma perturbação externa severa e o nível do buffer despranque instantaneamente, a enchedora **não sofre variação em degrau**:
+Mesmo que ocorra uma perturbação externa severa e o nível do buffer despenque instantaneamente, a enchedora **não sofre variação em degrau**.
 
-$$V_{\text{final}}(t) = V_{\text{final}}(t-1) + \text{clip}\left(V_{\text{alvo}}(t) - V_{\text{final}}(t-1), -\Delta V_{\text{max\_ciclo}}, +\Delta V_{\text{max\_ciclo}}\right)$$
+A taxa mecânica é parametrizada no padrão direto de inversores de frequência e CLPs industriais:
+* **`Tempo_Rampa_Subida_s`:** Tempo em segundos para acelerar de 0 até 100% da velocidade máxima nominal (ex: 15.0 segundos).
+* **`Tempo_Rampa_Descida_s`:** Tempo em segundos para desacelerar de 100% nominal até 0 (ex: 8.0 segundos).
 
-Onde o degrau máximo permitido no ciclo é proporcional ao tempo $\Delta t$ decorrido:
-$$\Delta V_{\text{max\_ciclo}} = \left(\frac{\text{Max\_Rampa\_CPH\_Passo}}{30.0}\right) \times \Delta t$$
+> **Atenção de Processo e Automação:** A base de cálculo da rampa mecânica é estritamente a **Velocidade Máxima Nominal** (ex: 94.500 gf/h), e **NUNCA** a velocidade de sobremarcha/sprint. Isso assegura que a inclinação mecânica das esteiras permaneça rigorosamente controlada, independente de a linha entrar ou não em sobrevelocidade.
+
+**Cálculo da Dinâmica Física:**
+* Taxa de Aceleração (CPH por segundo) = Velocidade Nominal / Tempo_Rampa_Subida_s
+* Taxa de Desaceleração (CPH por segundo) = Velocidade Nominal / Tempo_Rampa_Descida_s
+* Degrau Máximo de Subida por Ciclo = Taxa de Aceleração * Delta_t
+* Degrau Máximo de Descida por Ciclo = Taxa de Desaceleração * Delta_t
 
 ### 6.3 Banda Morta Anti-Chattering para Máquinas Antigas (`Banda_Morta_CPH`)
-Em máquinas antigas, fazer pequenos ajustes de $50$, $100$ ou $200\text{ CPH}$ a cada ciclo de 30 segundos provoca vibração desnecessária no motor, desgaste em potenciômetros digitais e fadiga mecânica.
+Em máquinas antigas, fazer pequenos ajustes de 50, 100 ou 200 CPH a cada ciclo de 30 segundos provoca vibração desnecessária no motor, desgaste em potenciômetros digitais e fadiga mecânica.
 
 Implementamos a **Banda Morta**:
 * Se a diferença entre a velocidade alvo e a velocidade atual for menor que o limiar configurado:
-  $$\text{SE } |V_{\text{alvo}} - V_{\text{atual}}| < \text{Banda\_Morta\_CPH} \longrightarrow V_{\text{alvo}} = V_{\text{atual}}$$
-* **Configuração Padrão:** $\mathbf{300.0\text{ CPH}}$. Pequenas oscilações transitórias deixam a máquina rodando em velocidade **$100\%$ constante**.
+  `SE |V_alvo - V_atual| < Banda_Morta_CPH -> V_alvo = V_atual`
+* **Configuração Padrão:** `300.0 CPH`. Pequenas oscilações transitórias deixam a máquina rodando em velocidade **100% constante**.
 
 ### 6.4 Tabela de Calibração de Rampa para Diferentes Perfis de Máquinas
 
-No arquivo [`config_colunas.json`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/config_colunas.json), o parâmetro `Max_Rampa_CPH_Passo` permite customizar a velocidade da rampa para o perfil mecânico exato da enchedora:
+No arquivo `config_colunas.json`, os parâmetros `Tempo_Rampa_Subida_s` e `Tempo_Rampa_Descida_s` permitem customizar o comportamento mecânico exato da linha:
 
-| Perfil da Máquina | `Max_Rampa_CPH_Passo` (30s) | Taxa Efetiva | Tempo para Modular $6.500\text{ CPH}$ | Aplicação Recomendada |
+| Perfil da Máquina | Tempo de Subida (0 a 100%) | Tempo de Descida (100% a 0) | Taxa com 94.500 CPH | Aplicação Recomendada |
 | :--- | :---: | :---: | :---: | :--- |
-| **Padrão de Fábrica** | `3000.0 CPH` | $100\text{ CPH/s}$ | $\mathbf{\approx 65\text{ segundos}}$ | Enchedoras modernas (acionamento servo ou inversor de alta dinâmica). |
-| **Máquinas Antigas (Conservadora)** | `1000.0 CPH` | $33\text{ CPH/s}$ | $\mathbf{\approx 3.2\text{ minutos}}$ | Enchedoras antigas com folga mecânica ou inversores analógicos sensíveis. |
-| **Ultra-Conservadora (Crítica)** | `500.0 CPH` | $16\text{ CPH/s}$ | $\mathbf{\approx 6.5\text{ minutos}}$ | Máquinas muito velhas com histórico de quebra de garrafas ou trancos no carrossel. |
+| **Alta Dinâmica (Inversor Rápido)** | `10.0 s` a `15.0 s` | `5.0 s` a `8.0 s` | 6.300 a 9.450 CPH/s | Linhas modernas com inversores de resposta rápida e esteiras com controle de vácuo/pressão. |
+| **Padrão Balanceado (Recomendado)** | `20.0 s` a `30.0 s` | `10.0 s` a `15.0 s` | 3.150 a 4.725 CPH/s | Linhas com esteiras convencionais de garrafas de vidro e mesas de acúmulo médias. |
+| **Conservadora (Máquinas Antigas)** | `60.0 s` a `90.0 s` | `20.0 s` a `30.0 s` | 1.050 a 1.575 CPH/s | Enchedoras antigas com folgas mecânicas ou risco elevado de tombamento de garrafas. |
 
 ### 6.5 Harmonia com o Inversor de Frequência (Drive)
-No painel de acionamento elétrico da enchedora, os inversores de frequência (Danfoss, SEW, Siemens) já possuem um parâmetro interno de rampa em curva S (*S-Curve de 15 a 30s*). Como o algoritmo entrega setpoints já escalonados em rampa suave e estabilizados por banda morta, os dois sistemas operam em perfeita sintonia mecânica, sem conflito de malha.
+No painel de acionamento elétrico da enchedora, os inversores de frequência (Danfoss, SEW, Siemens) já possuem um parâmetro interno de rampa em curva S (S-Curve). Como o algoritmo entrega setpoints já escalonados em rampa suave e estabilizados por banda morta, os dois sistemas operam em perfeita sintonia mecânica, sem conflito de malha.
 
 ---
 
@@ -324,22 +331,27 @@ Na engenharia de embalagem e análise de OEE, as paradas e perdas de velocidade 
 | `Fator_Sobremarcha` | Float | Multiplicador de velocidade máxima em sprint (ex: `1.02` = +2%). |
 | `Min_Modulacao` | Float | Proporção mínima de modulação segura em relação à nominal (ex: `0.75`). |
 | `Max_Modulacao` | Float | Proporção máxima de modulação padrão em regime normal (ex: `1.00`). |
-| `Max_Rampa_CPH_Passo` | Float | Limite mecânico de variação por ciclo de 30s (ex: `3000.0` = $100\text{ CPH/s}$; `1000.0` para máquinas velhas). |
-| `Banda_Morta_CPH` | Float | Limiar de tolerância para ignorar microajustes e vibrações em atuadores antigos (ex: `300.0 CPH`). |
+| `Tempo_Rampa_Subida_s` | Float | Tempo em segundos para acelerar de 0 até a velocidade máxima nominal (ex: `15.0`). |
+| `Tempo_Rampa_Descida_s` | Float | Tempo em segundos para desacelerar da velocidade máxima nominal até 0 (ex: `8.0`). |
+| `Max_Rampa_CPH_Passo` | Float | Limite mecânico de variação por ciclo de 30s (ex: `3000.0` = 100 CPH/s; `1000.0` para máquinas velhas). |
+| `Banda_Morta_CPH` | Float | Limiar de tolerância para ignorar microajustes e vibrações em atuadores antigos (ex: `300.0` CPH). |
 | `Alpha_Filtro_Buffer` | Float | Fator de suavização do filtro EWMA de densidade de buffer (ex: `0.65`). |
 | `Janela_Mediana_Buffer` | Int | Número de amostras da janela do filtro mediano (ex: `3`). |
 
 ### 11.2 Arquivo `parametros_controle_v4.json`
-Armazena os parâmetros otimizados pelo CMA-ES consumidos pela função autônoma:
+Armazena os parâmetros consumidos pela função autônoma:
 * `b1_lim`, `b2_lim`, `b3_lim`, `b4_lim`: Limiares operacionais dos buffers.
 * `rampa_b2`, `rampa_b3`: Largura das transições fuzzy.
 * `antecipacao_b1`, `antecipacao_b4`: Janelas de antecipação feedforward.
-* `fator_reducao`: Piso de modulação em marcha lenta segura ($\approx 89.2\%$).
-* `peso_retomada_tendencia`: Intensidade da antecipação de retomada ($\approx 10\%$).
-* `fator_sprint`: Teto de sobremarcha permitido ($\approx 1.01$).
-* `max_rampa_cph_passo`: Taxa máxima de aceleração mecânica por passo ($3.000\text{ CPH}$).
-* `alpha_ewma`: Fator de suavização contínua do acúmulo ($0.65$).
-* `velocidade_nominal_calculada`: Velocidade nominal adotada como referência ($60.000\text{ CPH}$).
+* `fator_reducao`: Piso de modulação em marcha lenta segura (~75% a 85%).
+* `peso_retomada_tendencia`: Intensidade da antecipação de retomada com jusante.
+* `fator_sprint`: Teto de sobremarcha permitido (~1.01 a 1.05).
+* `tempo_rampa_subida_s`: Tempo em segundos para acelerar de 0 até a velocidade máxima nominal.
+* `tempo_rampa_descida_s`: Tempo em segundos para desacelerar de 100% nominal até 0.
+* `taxa_subida_cph_s`: Taxa física de aceleração calculada estritamente sobre a velocidade nominal máxima (CPH por segundo).
+* `taxa_descida_cph_s`: Taxa física de desaceleração calculada sobre a velocidade nominal máxima (CPH por segundo).
+* `alpha_ewma`: Fator de suavização contínua do acúmulo (0.65).
+* `velocidade_nominal_calculada`: Velocidade nominal adotada como referência máxima (ex: 94.500 CPH).
 
 ---
 
@@ -461,6 +473,32 @@ Para eliminar qualquer ganho fictício e atestar o ganho real de garrafas físic
 
 - **Arquivo de Configuração Local:** [`Controle_Velocidade_4/parametros_query.json`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/parametros_query.json).
   O script busca este arquivo prioritariamente no mesmo diretório do executável (`os.path.dirname(__file__)`), viabilizando a inicialização direta em qualquer pasta de trabalho.
+
+```json
+{
+  "config": {
+    "grafana_url": "http://172.23.224.145:3000",
+    "grafana_user": "admin",
+    "grafana_password": "!ambev2021",
+    "database": "soda-template",
+    "datasource_selector": "8"
+  },
+  "queries": [
+    {
+      "description": "Enchedora contagem de produto",
+      "equipment_type": "Filler",
+      "anticipation": false,
+      "tags": {
+        "equipment_name": "NS-05410-ENCHEDORA 01",
+        "rule": ""
+      },
+      "fields": {
+        "Packaging Machine Production Counter - Total": "1.14.37.162.2.24-1.32-1.0.7275"
+      }
+    }
+  ]
+}
+```
 
 ```
 [ Telemetria de Buffers B1..B4 ] ──► [ Bucket: Segue (DS 13) ] ──(FLUX)─────► [ Controlador V4: Modulação ]

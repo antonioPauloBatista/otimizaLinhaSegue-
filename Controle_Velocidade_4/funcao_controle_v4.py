@@ -19,22 +19,84 @@ def rampa_trapezoidal(x, a, b, c, d):
     return 0.0
 
 class ControladorVelocidadeV4:
-    def __init__(self, velocidade_nominal=60000, v_atual_inicial=None, max_rampa=1000.0, banda_morta_cph=300.0):
+    def __init__(self, velocidade_nominal=94500, v_atual_inicial=None, 
+                 tempo_rampa_subida_s=10.0,
+                 tempo_rampa_descida_s=8.0,
+                 max_rampa=None, max_rampa_subida=None, max_rampa_descida=None,
+                 pct_rampa_subida=None, pct_rampa_descida=None,
+                 banda_morta_cph=300.0):
+        # A velocidade de referência para o tempo de rampa mecânica é a Velocidade Máxima Nominal (vel_nom).
+        # Conforme diretriz de automação e segurança: NUNCA se utiliza a sobremarcha/sprint como base da rampa.
         self.vel_nom = float(velocidade_nominal)
-        self.b1_lim = 20.66
-        self.b2_lim = 40.98
-        self.b3_lim = 58.45
-        self.b4_lim = 70.82
-        self.rampa_b2 = 10.60
-        self.rampa_b3 = 20.98
-        self.antecip_b1 = 7.79
-        self.antecip_b4 = 24.00
-        self.min_mod = 0.899
+        self.b1_lim = 16.01
+        self.b2_lim = 27.31
+        self.b3_lim = 74.37
+        self.b4_lim = 90.00
+        self.rampa_b2 = 18.87
+        self.rampa_b3 = 15.97
+        self.antecip_b1 = 15.17
+        self.antecip_b4 = 11.59
+        self.min_mod = 0.750
         self.peso_retomada = 0.100
         self.fator_sprint = 1.010
-        self.max_rampa = float(max_rampa)
         self.banda_morta = float(banda_morta_cph)
         self.alpha_ewma = 0.65
+
+        # Definição física das rampas mecânicas baseadas em TEMPO EM SEGUNDOS de 0 a 100% nominal:
+        # taxa (CPH/s) = vel_nom / tempo_s
+        if tempo_rampa_subida_s is not None:
+            self.tempo_rampa_subida_s = float(tempo_rampa_subida_s)
+            self.taxa_subida_cph_s = self.vel_nom / max(0.1, self.tempo_rampa_subida_s)
+            self.max_rampa_subida = round(self.taxa_subida_cph_s * 30.0, 1)
+            self.pct_rampa_subida = round(self.max_rampa_subida / self.vel_nom, 4)
+        elif max_rampa_subida is not None:
+            self.max_rampa_subida = float(max_rampa_subida)
+            self.taxa_subida_cph_s = self.max_rampa_subida / 30.0
+            self.tempo_rampa_subida_s = round(self.vel_nom / max(0.1, self.taxa_subida_cph_s), 1)
+            self.pct_rampa_subida = round(self.max_rampa_subida / self.vel_nom, 4)
+        elif pct_rampa_subida is not None:
+            self.pct_rampa_subida = float(pct_rampa_subida)
+            self.max_rampa_subida = round(self.vel_nom * self.pct_rampa_subida, 1)
+            self.taxa_subida_cph_s = self.max_rampa_subida / 30.0
+            self.tempo_rampa_subida_s = round(self.vel_nom / max(0.1, self.taxa_subida_cph_s), 1)
+        elif max_rampa is not None:
+            self.max_rampa_subida = float(max_rampa)
+            self.taxa_subida_cph_s = self.max_rampa_subida / 30.0
+            self.tempo_rampa_subida_s = round(self.vel_nom / max(0.1, self.taxa_subida_cph_s), 1)
+            self.pct_rampa_subida = round(self.max_rampa_subida / self.vel_nom, 4)
+        else:
+            self.pct_rampa_subida = float(3.0000)
+            self.max_rampa_subida = round(self.vel_nom * self.pct_rampa_subida, 1)
+            self.taxa_subida_cph_s = self.max_rampa_subida / 30.0
+            self.tempo_rampa_subida_s = round(self.vel_nom / max(0.1, self.taxa_subida_cph_s), 1)
+
+        if tempo_rampa_descida_s is not None:
+            self.tempo_rampa_descida_s = float(tempo_rampa_descida_s)
+            self.taxa_descida_cph_s = self.vel_nom / max(0.1, self.tempo_rampa_descida_s)
+            self.max_rampa_descida = round(self.taxa_descida_cph_s * 30.0, 1)
+            self.pct_rampa_descida = round(self.max_rampa_descida / self.vel_nom, 4)
+        elif max_rampa_descida is not None:
+            self.max_rampa_descida = float(max_rampa_descida)
+            self.taxa_descida_cph_s = self.max_rampa_descida / 30.0
+            self.tempo_rampa_descida_s = round(self.vel_nom / max(0.1, self.taxa_descida_cph_s), 1)
+            self.pct_rampa_descida = round(self.max_rampa_descida / self.vel_nom, 4)
+        elif pct_rampa_descida is not None:
+            self.pct_rampa_descida = float(pct_rampa_descida)
+            self.max_rampa_descida = round(self.vel_nom * self.pct_rampa_descida, 1)
+            self.taxa_descida_cph_s = self.max_rampa_descida / 30.0
+            self.tempo_rampa_descida_s = round(self.vel_nom / max(0.1, self.taxa_descida_cph_s), 1)
+        elif max_rampa is not None:
+            self.max_rampa_descida = float(max_rampa) * 2.5
+            self.taxa_descida_cph_s = self.max_rampa_descida / 30.0
+            self.tempo_rampa_descida_s = round(self.vel_nom / max(0.1, self.taxa_descida_cph_s), 1)
+            self.pct_rampa_descida = round(self.max_rampa_descida / self.vel_nom, 4)
+        else:
+            self.pct_rampa_descida = float(3.7500)
+            self.max_rampa_descida = round(self.vel_nom * self.pct_rampa_descida, 1)
+            self.taxa_descida_cph_s = self.max_rampa_descida / 30.0
+            self.tempo_rampa_descida_s = round(self.vel_nom / max(0.1, self.taxa_descida_cph_s), 1)
+
+        self.max_rampa = self.max_rampa_subida  # Campo legado para retrocompatibilidade
 
         # Estado interno dos filtros e rampa mecânica
         self.b1_f = 50.0
@@ -53,9 +115,12 @@ class ControladorVelocidadeV4:
 
         # Carregar descrições de motivo se o json estiver presente
         self.mapa_motivos = {}
-        if os.path.exists("motivos_modulacao_enum.json"):
+        caminho_enum = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motivos_modulacao_enum.json")
+        if not os.path.exists(caminho_enum):
+            caminho_enum = "motivos_modulacao_enum.json"
+        if os.path.exists(caminho_enum):
             try:
-                with open("motivos_modulacao_enum.json", "r", encoding="utf-8") as f:
+                with open(caminho_enum, "r", encoding="utf-8") as f:
                     self.mapa_motivos = json.load(f)
             except Exception: pass
 
@@ -218,20 +283,32 @@ class ControladorVelocidadeV4:
         b1_alerta = rampa_trapezoidal(self.b1_f, -1, 0, self.b1_lim, self.b1_lim + self.antecip_b1)
         b4_alerta = rampa_trapezoidal(self.b4_f, self.b4_lim - self.antecip_b4, self.b4_lim, 100, 101)
 
-        # Regra R3 com Trava Rígida de Teto mecânica (se B3 > 80%, desativa retomada antecipada)
-        if self.b3_f > 80.0:
+        # Balanço de massa e capacidade de escoamento na saída:
+        # Se o Pasteurizador (v_out) está puxando garrafas a plena carga (v_out >= 0.90 * v_nom),
+        # a taxa de esvaziamento da esteira B3 compensa a produção da Enchedora.
+        # A modulação preventiva só deve atuar se houver déficit de escoamento ou se B3 atingir nível crítico.
+        deficit_escoamento_saida = max(0.0, min(1.0, (v_nom - v_out) / (0.25 * v_nom))) if v_out < v_nom else 0.0
+
+        # Regra R3 com Trava Rígida de Teto mecânica (se B3 >= 80%, prioridade absoluta para desaceleração)
+        if self.b3_f >= 80.0:
             w_saida_cheia = b3_alto
             w_retomada = 0.0
         else:
-            w_saida_cheia = b3_alto * (1.0 - self.peso_retomada * mu_acelerando)
+            urgencia_b3 = max(deficit_escoamento_saida, max(0.0, (self.b3_f - 75.0) / 10.0))
+            w_saida_cheia = b3_alto * urgencia_b3 * (1.0 - self.peso_retomada * mu_acelerando)
             w_retomada = b3_alto * (self.peso_retomada * mu_acelerando)
 
-        cond_sprint = (self.b2_f >= (self.b2_lim + 10.0)) and (self.b3_f <= (self.b3_lim - 10.0)) and (v_in >= 0.90 * v_nom) and (v_out >= 0.90 * v_nom)
+        # Regra Feedforward B4 acoplada ao Pasteurizador:
+        # B4 fica depois do Pasteurizador. Se o Pasteurizador não desacelerou, B4 não estrangula a Enchedora diretamente.
+        w_ff_b4 = b4_alerta * deficit_escoamento_saida if self.b3_f < 75.0 else b4_alerta
+
+        # Condição de Sprint / Sobrevelocidade: Oportunidade com entrada abundante e saída livre
+        cond_sprint = (self.b2_f >= 60.0) and (self.b3_f <= (self.b3_lim - 10.0)) and (v_in >= 0.90 * v_nom) and (v_out >= 0.90 * v_nom)
         w_sprint = 1.0 if cond_sprint else 0.0
         w_normal = min(b2_normal, b3_normal) * (1.0 - w_sprint)
 
-        num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (b4_alerta * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
-        den = b2_baixo + w_saida_cheia + w_retomada + b1_alerta + b4_alerta + w_normal + w_sprint
+        num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (w_ff_b4 * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
+        den = b2_baixo + w_saida_cheia + w_retomada + b1_alerta + w_ff_b4 + w_normal + w_sprint
         v_alvo = v_nom if den == 0 else num / den
         v_alvo = max(v_reduz, min(v_sprint, v_alvo))
 
@@ -248,12 +325,15 @@ class ControladorVelocidadeV4:
                     self.v_alvo_estabilizado = v_alvo
 
             alvo_execucao = self.v_alvo_estabilizado
-            max_degrau = (self.max_rampa / 30.0) * max(1.0, float(delta_t_s))
+            max_degrau_subida = self.taxa_subida_cph_s * max(0.1, float(delta_t_s))
+            max_degrau_descida = self.taxa_descida_cph_s * max(0.1, float(delta_t_s))
             delta = alvo_execucao - self.v_atual
-            if delta > max_degrau:
-                self.v_atual += max_degrau
-            elif delta < -max_degrau:
-                self.v_atual -= max_degrau
+            if delta > 0:
+                # Aceleração (subida suave cautelosa)
+                self.v_atual += min(delta, max_degrau_subida)
+            elif delta < 0:
+                # Desaceleração (descida rápida protetiva)
+                self.v_atual -= min(abs(delta), max_degrau_descida)
             else:
                 self.v_atual = alvo_execucao
 
@@ -281,7 +361,7 @@ class ControladorVelocidadeV4:
                 m_id = 25  # RETOMADA_ACELERANDO_SAIDA
             elif v_alvo > v_final + 150.0:
                 m_id = 60  # LIMITADOR_RAMPA_MECANICA (rampa subindo gradualmente)
-            elif self.b3_f > self.b3_lim:
+            elif self.b3_f > self.b3_lim and (deficit_escoamento_saida > 0 or self.b3_f >= 75.0):
                 m_id = 20  # ACUMULO_SAIDA_B3
             elif self.b2_f < self.b2_lim:
                 m_id = 10  # FALTA_ENTRADA_B2
@@ -289,7 +369,7 @@ class ControladorVelocidadeV4:
                 m_id = 80  # MAQUINA_SAIDA_LENTA
             elif v_in < 0.85 * v_nom:
                 m_id = 70  # MAQUINA_ENTRADA_LENTA
-            elif self.b4_f > self.b4_lim:
+            elif w_ff_b4 > 0:
                 m_id = 50  # FEEDFORWARD_ALERTA_B4
             elif self.b1_f < self.b1_lim:
                 m_id = 40  # FEEDFORWARD_ALERTA_B1

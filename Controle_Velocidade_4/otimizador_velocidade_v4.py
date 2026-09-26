@@ -35,7 +35,11 @@ MIN_MODULACAO = 0.75
 MAX_MODULACAO = 1.00
 VELOCIDADE_NOMINAL_ECH = 60000.0
 LIMIAR_VELOCIDADE_MANUTENCAO = 30000.0
-MAX_RAMPA_CPH_PASSO = 3000.0   # CPH por ciclo (ex: 30s)
+MAX_RAMPA_CPH_PASSO = 1000.0   # CPH por ciclo (ex: 30s) legado
+TEMPO_RAMPA_SUBIDA_S = 15.0    # Segundos para ir de 0 a 100% nominal (ex: 15s)
+TEMPO_RAMPA_DESCIDA_S = 8.0    # Segundos para ir de 100% nominal a 0 (ex: 8s)
+PCT_RAMPA_SUBIDA = 0.017       # Legado
+PCT_RAMPA_DESCIDA = 0.042      # Legado
 FATOR_SOBREMARCHA = 1.02
 ALPHA_FILTRO_BUFFER = 0.65
 JANELA_MEDIANA = 3
@@ -81,6 +85,8 @@ if os.path.exists(ARQUIVO_CONFIG):
             MAX_MODULACAO = float(cfg.get("Max_Modulacao", MAX_MODULACAO))
             FATOR_SOBREMARCHA = float(cfg.get("Fator_Sobremarcha", FATOR_SOBREMARCHA))
             MAX_RAMPA_CPH_PASSO = float(cfg.get("Max_Rampa_CPH_Passo", MAX_RAMPA_CPH_PASSO))
+            PCT_RAMPA_SUBIDA = float(cfg.get("Pct_Rampa_Subida_Passo", PCT_RAMPA_SUBIDA))
+            PCT_RAMPA_DESCIDA = float(cfg.get("Pct_Rampa_Descida_Passo", PCT_RAMPA_DESCIDA))
             ALPHA_FILTRO_BUFFER = float(cfg.get("Alpha_Filtro_Buffer", ALPHA_FILTRO_BUFFER))
             JANELA_MEDIANA = int(cfg.get("Janela_Mediana_Buffer", JANELA_MEDIANA))
             FILTRO_MINUTOS_PARADA_LONGA = int(cfg.get("Filtro_Minutos_Parada_Longa", FILTRO_MINUTOS_PARADA_LONGA))
@@ -90,8 +96,33 @@ if os.path.exists(ARQUIVO_CONFIG):
             
             val_manut = cfg.get("Limiar_Velocidade_Manutencao", None)
             if val_manut is not None: LIMIAR_VELOCIDADE_MANUTENCAO = float(val_manut)
+
+            if "Tempo_Rampa_Subida_s" in cfg or "tempo_rampa_subida_s" in cfg:
+                TEMPO_RAMPA_SUBIDA_S = float(cfg.get("Tempo_Rampa_Subida_s", cfg.get("tempo_rampa_subida_s", TEMPO_RAMPA_SUBIDA_S)))
+            if "Tempo_Rampa_Descida_s" in cfg or "tempo_rampa_descida_s" in cfg:
+                TEMPO_RAMPA_DESCIDA_S = float(cfg.get("Tempo_Rampa_Descida_s", cfg.get("tempo_rampa_descida_s", TEMPO_RAMPA_DESCIDA_S)))
     except Exception as e:
         print(f"⚠️ Aviso ao carregar '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
+
+# Base de cálculo física das rampas: Velocidade Máxima Nominal (VELOCIDADE_NOMINAL_ECH).
+# Diretriz de processo e automação: NUNCA se utiliza a velocidade de sobremarcha/sprint como base da rampa.
+if 'cfg' in locals() and ("Tempo_Rampa_Subida_s" in cfg or "tempo_rampa_subida_s" in cfg):
+    TAXA_SUBIDA_CPH_S = VELOCIDADE_NOMINAL_ECH / max(0.1, TEMPO_RAMPA_SUBIDA_S)
+    MAX_RAMPA_SUBIDA = TAXA_SUBIDA_CPH_S * 30.0
+    PCT_RAMPA_SUBIDA = MAX_RAMPA_SUBIDA / VELOCIDADE_NOMINAL_ECH
+else:
+    MAX_RAMPA_SUBIDA = float(cfg.get("Max_Rampa_Subida_CPH_Passo", VELOCIDADE_NOMINAL_ECH * PCT_RAMPA_SUBIDA)) if 'cfg' in locals() else VELOCIDADE_NOMINAL_ECH * PCT_RAMPA_SUBIDA
+    TAXA_SUBIDA_CPH_S = MAX_RAMPA_SUBIDA / 30.0
+    TEMPO_RAMPA_SUBIDA_S = round(VELOCIDADE_NOMINAL_ECH / max(0.1, TAXA_SUBIDA_CPH_S), 1)
+
+if 'cfg' in locals() and ("Tempo_Rampa_Descida_s" in cfg or "tempo_rampa_descida_s" in cfg):
+    TAXA_DESCIDA_CPH_S = VELOCIDADE_NOMINAL_ECH / max(0.1, TEMPO_RAMPA_DESCIDA_S)
+    MAX_RAMPA_DESCIDA = TAXA_DESCIDA_CPH_S * 30.0
+    PCT_RAMPA_DESCIDA = MAX_RAMPA_DESCIDA / VELOCIDADE_NOMINAL_ECH
+else:
+    MAX_RAMPA_DESCIDA = float(cfg.get("Max_Rampa_Descida_CPH_Passo", VELOCIDADE_NOMINAL_ECH * PCT_RAMPA_DESCIDA)) if 'cfg' in locals() else VELOCIDADE_NOMINAL_ECH * PCT_RAMPA_DESCIDA
+    TAXA_DESCIDA_CPH_S = MAX_RAMPA_DESCIDA / 30.0
+    TEMPO_RAMPA_DESCIDA_S = round(VELOCIDADE_NOMINAL_ECH / max(0.1, TAXA_DESCIDA_CPH_S), 1)
 
 if not os.path.exists(ARQUIVO_CSV):
     print(f"❌ Arquivo '{ARQUIVO_CSV}' não encontrado!")
@@ -211,14 +242,14 @@ def vec_trapezoidal(x_arr, a, b, c, d):
 
 def simular_controle_v4(x_params, override_vel_nominal=None):
     b1_lim = np.clip(x_params[0], 10.0, 30.0)
-    b2_lim = np.clip(x_params[1], 15.0, 50.0)
-    b3_lim = np.clip(x_params[2], 50.0, 85.0)
-    b4_lim = np.clip(x_params[3], 70.0, 90.0)
+    b2_lim = np.clip(x_params[1], 15.0, 45.0)
+    b3_lim = np.clip(x_params[2], 65.0, 80.0)
+    b4_lim = np.clip(x_params[3], 75.0, 90.0)
     rampa_b2 = np.clip(x_params[4], 10.0, 35.0)
     rampa_b3 = np.clip(x_params[5], 10.0, 35.0)
     antecip_b1 = np.clip(x_params[6], 5.0, 30.0)
     antecip_b4 = np.clip(x_params[7], 5.0, 30.0)
-    min_mod = np.clip(x_params[8], 0.65, 0.90)
+    min_mod = MIN_MODULACAO  # Respeita estritamente config_colunas.json (ex: 0.75)
     peso_retomada = np.clip(x_params[9], 0.10, 0.60)
     fator_sprint = np.clip(x_params[10], 1.01, 1.05)
 
@@ -237,21 +268,33 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     b1_alerta = vec_trapezoidal(b1_hist, -1, 0, b1_lim, b1_lim + antecip_b1)
     b4_alerta = vec_trapezoidal(b4_hist, b4_lim - antecip_b4, b4_lim, 100, 101)
 
-    # 3. Tendência de Aceleração da Máquina da Frente (Retomada Sincronizada)
+    # 3. Balanço de Massa e Tendência de Aceleração da Máquina da Frente
+    deficit_escoamento_saida = np.where(v_out_real_hist < vel_nominal, np.clip((vel_nominal - v_out_real_hist) / (0.25 * vel_nominal), 0.0, 1.0), 0.0)
     mu_acelerando_jusante = np.clip((trend_vout_hist - 20.0) / 100.0, 0.0, 1.0)
     
-    w_saida_cheia = b3_alto * (1.0 - peso_retomada * mu_acelerando_jusante)
-    w_retomada_sinc = b3_alto * (peso_retomada * mu_acelerando_jusante)
+    urgencia_b3 = np.maximum(deficit_escoamento_saida, np.clip((b3_hist - 75.0) / 10.0, 0.0, 1.0))
+    w_saida_cheia = np.where(
+        b3_hist >= 80.0,
+        b3_alto,
+        b3_alto * urgencia_b3 * (1.0 - peso_retomada * mu_acelerando_jusante)
+    )
+    w_retomada_sinc = np.where(
+        b3_hist >= 80.0,
+        0.0,
+        b3_alto * (peso_retomada * mu_acelerando_jusante)
+    )
+
+    # Feedforward B4 acoplado ao escoamento do Pasteurizador
+    w_ff_b4 = np.where(b3_hist < 75.0, b4_alerta * deficit_escoamento_saida, b4_alerta)
 
     # 4. Condição de Sprint / Sobrevelocidade
-    cond_sprint_buffers = (b2_hist >= (b2_lim + 10.0)) & (b3_hist <= (b3_lim - 10.0))
+    cond_sprint_buffers = (b2_hist >= (b2_lim + 5.0)) & (b3_hist <= 75.0)
     cond_sprint_maquinas = (v_in_real_hist >= 0.90 * vel_nominal) & (v_out_real_hist >= 0.90 * vel_nominal)
     w_sprint = np.where(cond_sprint_buffers & cond_sprint_maquinas, 1.0, 0.0)
 
     w_entrada_vazia = b2_baixo
     w_normal = np.minimum(b2_normal, b3_normal) * (1.0 - w_sprint)
     w_ff_b1 = b1_alerta
-    w_ff_b4 = b4_alerta
 
     num = (w_entrada_vazia * v_reduz) + \
           (w_saida_cheia * v_reduz) + \
@@ -280,10 +323,10 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
                 v_atual = min(alvo, v_reduz)
             else:
                 delta = alvo - v_atual
-                if delta > MAX_RAMPA_CPH_PASSO:
-                    v_atual += MAX_RAMPA_CPH_PASSO
-                elif delta < -MAX_RAMPA_CPH_PASSO:
-                    v_atual -= MAX_RAMPA_CPH_PASSO
+                if delta > 0:
+                    v_atual += min(delta, MAX_RAMPA_SUBIDA)
+                elif delta < 0:
+                    v_atual -= min(abs(delta), MAX_RAMPA_DESCIDA)
                 else:
                     v_atual = alvo
         v_otimizada[i] = v_atual
@@ -294,9 +337,9 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     penalidade_acel = np.sum((np.diff(v_otimizada) / 1000.0) ** 2)
 
     limites = [
-        (10, 30), (15, 50), (50, 85), (70, 90),
+        (10, 30), (15, 45), (65, 80), (75, 90),
         (10, 35), (10, 35), (5, 30), (5, 30),
-        (0.65, 0.90), (0.10, 0.60), (1.01, 1.05)
+        (MIN_MODULACAO - 1.0, MIN_MODULACAO + 1.0), (0.10, 0.60), (1.01, 1.05)
     ]
     penalidade_bounds = 0.0
     for i, val in enumerate(x_params):
@@ -304,7 +347,7 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
         if val < inf: penalidade_bounds += (inf - val) ** 2 * 100000.0
         if val > sup: penalidade_bounds += (val - sup) ** 2 * 100000.0
 
-    score = producao - (paradas_soco * 40000.0) - (penalidade_acel * 15.0) - penalidade_bounds
+    score = producao - (paradas_soco * 2500.0) - (penalidade_acel * 15.0) - penalidade_bounds
     return score, producao, v_otimizada, v_sug_bruta
 
 # Função wrapper para o CMA-ES
@@ -401,7 +444,7 @@ x_inicial = np.array([
     20.0,  # rampa_b3
     15.0,  # antecip_b1
     15.0,  # antecip_b4
-    0.78,  # min_modulacao
+    MIN_MODULACAO,  # min_modulacao (respeita config_colunas.json)
     0.35,  # peso_retomada
     1.02   # fator_sprint
 ])
@@ -427,7 +470,7 @@ rampa_b2_opt = float(np.clip(melhores_params[4], 10.0, 35.0))
 rampa_b3_opt = float(np.clip(melhores_params[5], 10.0, 35.0))
 antecip_b1_opt = float(np.clip(melhores_params[6], 5.0, 30.0))
 antecip_b4_opt = float(np.clip(melhores_params[7], 5.0, 30.0))
-min_mod_opt = float(np.clip(melhores_params[8], 0.65, 0.90))
+min_mod_opt = float(MIN_MODULACAO)  # Estritamente do config_colunas.json
 peso_retomada_opt = float(np.clip(melhores_params[9], 0.10, 0.60))
 fator_sprint_opt = float(np.clip(melhores_params[10], 1.01, 1.05))
 
@@ -497,19 +540,28 @@ parametros_json = {
     "fator_reducao": round(min_mod_opt, 3),
     "peso_retomada_tendencia": round(peso_retomada_opt, 3),
     "fator_sprint": round(fator_sprint_opt, 3),
-    "max_rampa_cph_passo": float(MAX_RAMPA_CPH_PASSO),
+    "tempo_rampa_subida_s": round(TEMPO_RAMPA_SUBIDA_S, 1),
+    "tempo_rampa_descida_s": round(TEMPO_RAMPA_DESCIDA_S, 1),
+    "taxa_subida_cph_s": round(TAXA_SUBIDA_CPH_S, 1),
+    "taxa_descida_cph_s": round(TAXA_DESCIDA_CPH_S, 1),
+    "pct_rampa_subida": round(PCT_RAMPA_SUBIDA, 4),
+    "pct_rampa_descida": round(PCT_RAMPA_DESCIDA, 4),
+    "max_rampa_subida_cph_passo": round(MAX_RAMPA_SUBIDA, 1),
+    "max_rampa_descida_cph_passo": round(MAX_RAMPA_DESCIDA, 1),
+    "max_rampa_cph_passo": round(MAX_RAMPA_SUBIDA, 1),
     "alpha_ewma": float(ALPHA_FILTRO_BUFFER),
     "velocidade_nominal_calculada": int(VELOCIDADE_NOMINAL_ECH)
 }
 
-with open("parametros_controle_v4.json", "w", encoding="utf-8") as f:
+dir_atual = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+
+with open(os.path.join(dir_atual, "parametros_controle_v4.json"), "w", encoding="utf-8") as f:
     json.dump(parametros_json, f, indent=4)
 print("➔ Parâmetros salvos em 'parametros_controle_v4.json'.")
 
 # =====================================================================
 # 6. GERAÇÃO AUTOMÁTICA DE CÓDIGO AUTÔNOMO E CONTROLADORES LIVE
 # =====================================================================
-dir_atual = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
 caminho_tpl_funcao = os.path.join(dir_atual, "templates", "funcao_controle_v4.template.py")
 caminho_tpl_live = os.path.join(dir_atual, "templates", "controlador_velocidade_live_v4.template.py")
 caminho_tpl_graf = os.path.join(dir_atual, "templates", "controlador_velocidade_grafana_v4.template.py")
@@ -533,10 +585,14 @@ cod_funcao = (
     .replace("__MIN_MOD_OPT__", f"{min_mod_opt:.3f}")
     .replace("__PESO_RETOMADA_OPT__", f"{peso_retomada_opt:.3f}")
     .replace("__FATOR_SPRINT_OPT__", f"{fator_sprint_opt:.3f}")
-    .replace("__MAX_RAMPA__", f"{MAX_RAMPA_CPH_PASSO:.1f}")
+    .replace("__TEMPO_RAMPA_SUBIDA_S__", f"{TEMPO_RAMPA_SUBIDA_S:.1f}")
+    .replace("__TEMPO_RAMPA_DESCIDA_S__", f"{TEMPO_RAMPA_DESCIDA_S:.1f}")
+    .replace("__PCT_RAMPA_SUBIDA__", f"{PCT_RAMPA_SUBIDA:.4f}")
+    .replace("__PCT_RAMPA_DESCIDA__", f"{PCT_RAMPA_DESCIDA:.4f}")
+    .replace("__MAX_RAMPA__", f"{MAX_RAMPA_SUBIDA:.1f}")
     .replace("__ALPHA_EWMA__", f"{ALPHA_FILTRO_BUFFER:.2f}")
 )
-with open("funcao_controle_v4.py", "w", encoding="utf-8") as f:
+with open(os.path.join(dir_atual, "funcao_controle_v4.py"), "w", encoding="utf-8") as f:
     f.write(cod_funcao)
 print("➔ Função autônoma gerada em 'funcao_controle_v4.py'.")
 
@@ -544,8 +600,13 @@ print("➔ Função autônoma gerada em 'funcao_controle_v4.py'.")
 with open(caminho_tpl_live, "r", encoding="utf-8") as f:
     cod_live = f.read()
 
-cod_live = cod_live.replace("__VEL_NOMINAL__", str(int(VELOCIDADE_NOMINAL_ECH)))
-with open("controlador_velocidade_live_v4.py", "w", encoding="utf-8") as f:
+cod_live = (
+    cod_live
+    .replace("__VEL_NOMINAL__", str(int(VELOCIDADE_NOMINAL_ECH)))
+    .replace("__TEMPO_RAMPA_SUBIDA_S__", f"{TEMPO_RAMPA_SUBIDA_S:.1f}")
+    .replace("__TEMPO_RAMPA_DESCIDA_S__", f"{TEMPO_RAMPA_DESCIDA_S:.1f}")
+)
+with open(os.path.join(dir_atual, "controlador_velocidade_live_v4.py"), "w", encoding="utf-8") as f:
     f.write(cod_live)
 print("➔ Simulador live gerado em 'controlador_velocidade_live_v4.py'.")
 
@@ -557,8 +618,10 @@ cod_graf = (
     cod_graf
     .replace("__VEL_NOMINAL__", str(float(VELOCIDADE_NOMINAL_ECH)))
     .replace("__LIMIAR_PARADA__", str(float(LIMIAR_VELOCIDADE_MANUTENCAO)))
+    .replace("__TEMPO_RAMPA_SUBIDA_S__", f"{TEMPO_RAMPA_SUBIDA_S:.1f}")
+    .replace("__TEMPO_RAMPA_DESCIDA_S__", f"{TEMPO_RAMPA_DESCIDA_S:.1f}")
 )
-with open("controlador_velocidade_grafana_v4.py", "w", encoding="utf-8") as f:
+with open(os.path.join(dir_atual, "controlador_velocidade_grafana_v4.py"), "w", encoding="utf-8") as f:
     f.write(cod_graf)
 print("➔ Controlador Grafana live gerado em 'controlador_velocidade_grafana_v4.py'.")
 
@@ -589,13 +652,13 @@ if COL_B1_DPL_UIP:
 if COL_B4_PZ_EPC:
     df_export["Buffer_B4_Filtrado"] = b4_hist
 
-df_export.to_csv("dados_velocidade_otimizada_v4.csv", index=False)
+df_export.to_csv(os.path.join(dir_atual, "dados_velocidade_otimizada_v4.csv"), index=False)
 print("➔ Base de dados com motivos exportada para 'dados_velocidade_otimizada_v4.csv'.")
 
 # =====================================================================
 # 8. GRÁFICOS DIÁRIOS COMPLETOS (PADRÃO V3: 15MIN RESAMPLE + FAIXAS COLORIDAS)
 # =====================================================================
-pasta_graf = "graficos_velocidade_otimizada_v4"
+pasta_graf = os.path.join(dir_atual, "graficos_velocidade_otimizada_v4")
 os.makedirs(pasta_graf, exist_ok=True)
 
 df_plot = df_export.copy()

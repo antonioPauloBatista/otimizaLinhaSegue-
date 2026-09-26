@@ -3,12 +3,13 @@ import numpy as np
 import os
 
 import json
+import sys
 
 # =====================================================================
 # 1. CONFIGURAÇÃO DOS ARQUIVOS E COLUNAS
 # =====================================================================
 ARQUIVO_CSV = "dados_completos_fabrica.csv"
-ARQUIVO_CONFIG = "config_colunas.json"
+ARQUIVO_CONFIG = sys.argv[1] if len(sys.argv) > 1 else "config_colunas.json"
 
 # Valores padrão de fallback
 COL_B1_DPL_UIP = "accumulation_percentage_DPL_UIP_null"  # Extremo Entrada (%)
@@ -243,7 +244,7 @@ print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amost
 # 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS
 # Limites mais conservadores baseados na configuração original (B1~43%, B2~24%, B3~77%, B4~71%)
 BOUNDS_LO = np.array([ 20.0, 70.0, 15.0, 50.0, 60.0, 50.0, 50.0, 70.0])
-BOUNDS_HI = np.array([ 55.0, 95.0, 45.0, 85.0, 85.0, 85.0, 80.0, 95.0])
+BOUNDS_HI = np.array([ 55.0, 95.0, 45.0, 95.0, 85.0, 95.0, 80.0, 95.0])
 
 def vetor_para_params(x):
     """Clipa e converte vetor numérico em dicionário de parâmetros."""
@@ -316,17 +317,16 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
         elif v_ech_real[i] == 0.0 and (b2[i] <= LIMITE_PARADA_FALTA or b3[i] >= LIMITE_PARADA_ACUMULO):
-            # REGRA REALISTA: 95% não salva buffer severo. A redução precisa ser <= 85% para salvar falta de garrafas.
+            # Modulação agressiva até 95% permitida para absorver micro-paradas sem despencar a velocidade
             if b2[i] <= LIMITE_PARADA_FALTA and b2_ativo:
-                if p["vel_ech_falta_critica"] <= 85.0: # Exige redução real
+                if p["vel_ech_falta_critica"] <= 95.0:
                     fator_velocidade = p["vel_ech_falta_critica"] / 100.0
                 else:
-                    # 95% foi fraco demais: a máquina teria parado na vida real!
                     fator_velocidade = 0.0
                     paradas_soco_reais_ocorridas += 1
                     
             elif b3[i] >= LIMITE_PARADA_ACUMULO and b3_ativo:
-                if p["vel_ech_acumulo_critico"] <= 85.0: # Exige redução real
+                if p["vel_ech_acumulo_critico"] <= 95.0:
                     fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
                 else:
                     fator_velocidade = 0.0
@@ -690,7 +690,8 @@ for linha in _rel:
 
 # --- Salva em arquivo de texto ---
 import datetime as _dt
-_nome_relatorio = f"relatorio_otimizador_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+_tag = os.path.splitext(os.path.basename(ARQUIVO_CONFIG))[0]
+_nome_relatorio = f"relatorio_otimizador_{_tag}_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 with open(_nome_relatorio, "w", encoding="utf-8") as _f:
     _f.write("\n".join(_rel) + "\n")
 print(f"\n➔ Relatório final salvo em '{_nome_relatorio}'.")
@@ -709,9 +710,11 @@ _dados_exportar = {
     "vel_ech_acumulo_extremo": float(melhores_parametros.get("vel_ech_acumulo_extremo", 0.0)),
     "Fator_Sobremarcha": float(FATOR_SOBREMARCHA)
 }
+with open(f"parametros_cma_es_{_tag}.json", "w", encoding="utf-8") as _fjson:
+    json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
 with open("parametros_cma_es.json", "w", encoding="utf-8") as _fjson:
     json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
-print("➔ Configurações ótimas salvas em 'parametros_cma_es.json' para uso no Live.")
+print(f"➔ Configurações ótimas salvas em 'parametros_cma_es_{_tag}.json' e 'parametros_cma_es.json' para uso no Live.")
 # =====================================================================
 # 8. EXPORTAÇÃO CSV E GRÁFICO
 # =====================================================================
@@ -723,8 +726,9 @@ if SALVAR_CSV_COMPARATIVO:
         "Buffer_B2_UIP_ECH":          df[COL_B2_UIP_ECH],
         "Buffer_B3_ECH_PZ":           df[COL_B3_ECH_PZ]
     })
+    df_comparado.to_csv(f"dados_projetados_otimizado_{_tag}.csv", index=False)
     df_comparado.to_csv("dados_projetados_otimizado.csv", index=False)
-    print("\n➔ CSV comparativo salvo em 'dados_projetados_otimizado.csv'.")
+    print(f"\n➔ CSV comparativo salvo em 'dados_projetados_otimizado_{_tag}.csv'.")
 
 if GERAR_GRAFICO_PLOTS:
     try:
@@ -789,7 +793,7 @@ if GERAR_GRAFICO_PLOTS:
             axes[1].grid(True, linestyle="--", alpha=0.4)
 
             plt.tight_layout()
-            nome_arquivo = f"comparacao_velocidades_otimizado_{dia}.png"
+            nome_arquivo = f"comparacao_velocidades_otimizado_{_tag}_{dia}.png"
             plt.savefig(nome_arquivo, dpi=150)
             plt.close(fig) # Fecha a figura para não consumir RAM acumulada
             print(f"   ↳ Salvo: {nome_arquivo}")

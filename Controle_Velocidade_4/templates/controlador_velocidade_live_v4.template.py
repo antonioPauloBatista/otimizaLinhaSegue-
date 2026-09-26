@@ -19,7 +19,12 @@ def main():
     print("Injetando parâmetros otimizados V4 com enum de causas-raiz...")
     print(f"Rastreamento de eventos ativo -> Arquivo JSON: '{ARQUIVO_JSON_LIVE}'\n")
 
-    ctrl = ControladorVelocidadeV4(velocidade_nominal=__VEL_NOMINAL__)
+    ctrl = ControladorVelocidadeV4(velocidade_nominal=__VEL_NOMINAL__,
+                                   tempo_rampa_subida_s=__TEMPO_RAMPA_SUBIDA_S__,
+                                   tempo_rampa_descida_s=__TEMPO_RAMPA_DESCIDA_S__)
+    print(f"Rampa Mecânica Referência (Velocidade Máxima Nominal: {ctrl.vel_nom:,.0f} CPH):")
+    print(f"   ↳ Subida : {ctrl.tempo_rampa_subida_s:.1f}s de 0 a 100% ({ctrl.taxa_subida_cph_s:,.0f} CPH/s)")
+    print(f"   ↳ Descida: {ctrl.tempo_rampa_descida_s:.1f}s de 100% a 0 ({ctrl.taxa_descida_cph_s:,.0f} CPH/s)\n")
 
     while True:
         try:

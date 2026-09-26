@@ -1,0 +1,13 @@
+{
+  "data_otimizacao": "2026-09-17 22:37:19",
+  "Velocidade_Nominal_ECH": 60000.0,
+  "gatilho_b1_falta_extrema": 39.78272118010871,
+  "vel_ech_falta_extrema": 93.89043860090145,
+  "gatilho_b2_falta_critica": 24.773011212261718,
+  "vel_ech_falta_critica": 85.0,
+  "gatilho_b3_acumulo_critico": 67.48133202110952,
+  "vel_ech_acumulo_critico": 85.0,
+  "gatilho_b4_acumulo_extremo": 79.7796625155915,
+  "vel_ech_acumulo_extremo": 95.0,
+  "Fator_Sobremarcha": 1.0
+}

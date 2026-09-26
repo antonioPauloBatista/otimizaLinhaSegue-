@@ -21,9 +21,10 @@ A versão V4 incorpora todas as capacidades da V3 com evoluções de engenharia 
    - Calcula a taxa de aceleração da máquina da saída (dV_out/dt).
    - Quando a máquina na saída destrava e começa a acelerar, a enchedora inicia imediatamente sua rampa de aceleração sem esperar o buffer de saída esvaziar por completo, eliminando o tempo morto de linha.
 
-4. **Proteção Mecânica Ativa (Slew-Rate Limiter em Software):**
-   - O setpoint despachado pelo algoritmo é estritamente limitado por uma taxa máxima de variação (ΔV_max / Δt).
-   - Elimina degraus bruscos, socos mecânicos no carrossel da enchedora, quebra de garrafas e perda de produto por espumamento (CO₂).
+4. **Proteção Mecânica Ativa (Slew-Rate Limiter Parametrizado por Tempo em Segundos):**
+   - Configuração física direta no padrão industrial de inversores: tempo em segundos para acelerar de 0 a 100% nominal (`Tempo_Rampa_Subida_s`) e tempo em segundos para desacelerar de 100% a 0 (`Tempo_Rampa_Descida_s`).
+   - A taxa de aceleração física é calculada com base estrita na **Velocidade Máxima Nominal** da enchedora (e **nunca** sobre a sobrevelocidade/sprint).
+   - O setpoint despachado pelo algoritmo é suavemente escalonado ciclo a ciclo (`taxa_cph_s * delta_t_s`), eliminando degraus bruscos, socos mecânicos no carrossel, quebra de garrafas e espumamento de cerveja.
 
 5. **Modo Sprint / Sobrevelocidade Condicionada:**
    - Permite que a enchedora opere acima da nominal (ex: 101% a 105%) quando a linha está completamente desafogada (buffers de entrada e saída em zona segura e máquinas vizinhas rodando a ≥ 90% da nominal).
