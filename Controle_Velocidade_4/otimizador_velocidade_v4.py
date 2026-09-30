@@ -44,6 +44,7 @@ FATOR_SOBREMARCHA = 1.02
 ALPHA_FILTRO_BUFFER = 0.65
 JANELA_MEDIANA = 3
 FILTRO_MINUTOS_PARADA_LONGA = 10
+BANDA_MORTA_CPH = 300.0
 
 COL_B1_DPL_UIP = "accumulation_percentage_pre_eci_null"
 COL_B2_UIP_ECH = "accumulation_percentage_eci_to_filler_null"
@@ -101,6 +102,8 @@ if os.path.exists(ARQUIVO_CONFIG):
                 TEMPO_RAMPA_SUBIDA_S = float(cfg.get("Tempo_Rampa_Subida_s", cfg.get("tempo_rampa_subida_s", TEMPO_RAMPA_SUBIDA_S)))
             if "Tempo_Rampa_Descida_s" in cfg or "tempo_rampa_descida_s" in cfg:
                 TEMPO_RAMPA_DESCIDA_S = float(cfg.get("Tempo_Rampa_Descida_s", cfg.get("tempo_rampa_descida_s", TEMPO_RAMPA_DESCIDA_S)))
+            if "Banda_Morta_CPH" in cfg or "banda_morta_cph" in cfg:
+                BANDA_MORTA_CPH = float(cfg.get("Banda_Morta_CPH", cfg.get("banda_morta_cph", BANDA_MORTA_CPH)))
     except Exception as e:
         print(f"⚠️ Aviso ao carregar '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
 
@@ -207,7 +210,10 @@ trend_vout_hist[0] = diff_vout[0]
 for i in range(1, len(df)):
     trend_vout_hist[i] = 0.5 * diff_vout[i] + 0.5 * trend_vout_hist[i - 1]
 
-# Identificar paradas externas longas inegociáveis
+# Identificar paradas externas longas inegociáveis ou paradas informadas por status
+COL_STATUS_MAQUINA = cfg.get("Col_Status_Maquina", "") if 'cfg' in locals() else ""
+status_maquina_arr = extrair_coluna_ou_soma(df, COL_STATUS_MAQUINA, opcional=True) if COL_STATUS_MAQUINA else None
+
 limite_amostras_parada = int((FILTRO_MINUTOS_PARADA_LONGA * 60) / time_step)
 is_zero = (v_ech_real_hist == 0.0)
 mascara_parada_longa = np.zeros(len(df), dtype=bool)
@@ -224,6 +230,12 @@ for i in range(len(df)):
         contador_parada = 0
 if contador_parada > limite_amostras_parada:
     mascara_parada_longa[inicio_parada:] = True
+
+# Se a coluna de status da máquina estiver presente, qualquer parada local da enchedora também é marcada
+if status_maquina_arr is not None:
+    parada_por_status = (status_maquina_arr <= 0) & is_zero
+    mascara_parada_longa |= parada_por_status
+    print(f"➔ Status da máquina ativo: {np.sum(parada_por_status)} amostras identificadas como parada própria da enchedora.")
 
 # =====================================================================
 # 3. MOTOR FUZZY V4 (TAKAGI-SUGENO COM TENDÊNCIA E SOBREVELOCIDADE)
@@ -251,7 +263,7 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     antecip_b4 = np.clip(x_params[7], 5.0, 30.0)
     min_mod = MIN_MODULACAO  # Respeita estritamente config_colunas.json (ex: 0.75)
     peso_retomada = np.clip(x_params[9], 0.10, 0.60)
-    fator_sprint = np.clip(x_params[10], 1.01, 1.05)
+    fator_sprint = float(FATOR_SOBREMARCHA)  # Respeita estritamente config_colunas.json (ex: 1.038)
 
     vel_nominal = override_vel_nominal if override_vel_nominal is not None else VELOCIDADE_NOMINAL_ECH
     v_nominal = vel_nominal * MAX_MODULACAO
@@ -287,9 +299,10 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     # Feedforward B4 acoplado ao escoamento do Pasteurizador
     w_ff_b4 = np.where(b3_hist < 75.0, b4_alerta * deficit_escoamento_saida, b4_alerta)
 
-    # 4. Condição de Sprint / Sobrevelocidade
-    cond_sprint_buffers = (b2_hist >= (b2_lim + 5.0)) & (b3_hist <= 75.0)
-    cond_sprint_maquinas = (v_in_real_hist >= 0.90 * vel_nominal) & (v_out_real_hist >= 0.90 * vel_nominal)
+    # 4. Condição de Sprint / Sobrevelocidade (desacoplada de v_in)
+    b2_sprint_on = np.clip(b2_lim + 15.0, 38.0, 60.0)
+    cond_sprint_buffers = (b2_hist >= b2_sprint_on) & (b3_hist <= (b3_lim - 5.0))
+    cond_sprint_maquinas = (v_out_real_hist >= 0.85 * vel_nominal)
     w_sprint = np.where(cond_sprint_buffers & cond_sprint_maquinas, 1.0, 0.0)
 
     w_entrada_vazia = b2_baixo
@@ -446,7 +459,7 @@ x_inicial = np.array([
     15.0,  # antecip_b4
     MIN_MODULACAO,  # min_modulacao (respeita config_colunas.json)
     0.35,  # peso_retomada
-    1.02   # fator_sprint
+    FATOR_SOBREMARCHA   # fator_sprint (lido de config_colunas.json)
 ])
 
 melhores_params, melhor_score, hist_scores = cma_es(
@@ -472,7 +485,7 @@ antecip_b1_opt = float(np.clip(melhores_params[6], 5.0, 30.0))
 antecip_b4_opt = float(np.clip(melhores_params[7], 5.0, 30.0))
 min_mod_opt = float(MIN_MODULACAO)  # Estritamente do config_colunas.json
 peso_retomada_opt = float(np.clip(melhores_params[9], 0.10, 0.60))
-fator_sprint_opt = float(np.clip(melhores_params[10], 1.01, 1.05))
+fator_sprint_opt = float(FATOR_SOBREMARCHA)  # Estritamente do config_colunas.json (ex: 1.038)
 
 # Carregar mapa de motivos
 mapa_motivos = {}
@@ -559,6 +572,31 @@ with open(os.path.join(dir_atual, "parametros_controle_v4.json"), "w", encoding=
     json.dump(parametros_json, f, indent=4)
 print("➔ Parâmetros salvos em 'parametros_controle_v4.json'.")
 
+# Sincronização automática no config_opc_v4.json
+caminho_opc_json = os.path.join(dir_atual, "config_opc_v4.json")
+if os.path.exists(caminho_opc_json):
+    try:
+        with open(caminho_opc_json, "r", encoding="utf-8") as f_opc:
+            cfg_opc = json.load(f_opc)
+        modificado = False
+        if "maquinas" in cfg_opc and isinstance(cfg_opc["maquinas"], dict):
+            cfg_opc["maquinas"]["velocidade_nominal"] = float(VELOCIDADE_NOMINAL_ECH)
+            if "cfg" in locals() and isinstance(cfg, dict) and "Col_Status_Maquina" in cfg and cfg["Col_Status_Maquina"]:
+                cfg_opc["maquinas"]["tag_status_maquina"] = str(cfg["Col_Status_Maquina"])
+            modificado = True
+        if "controle" in cfg_opc and isinstance(cfg_opc["controle"], dict):
+            cfg_opc["controle"]["fator_sprint"] = round(fator_sprint_opt, 3)
+            cfg_opc["controle"]["tempo_rampa_subida_s"] = float(TEMPO_RAMPA_SUBIDA_S)
+            cfg_opc["controle"]["tempo_rampa_descida_s"] = float(TEMPO_RAMPA_DESCIDA_S)
+            cfg_opc["controle"]["banda_morta_cph"] = float(BANDA_MORTA_CPH)
+            modificado = True
+        if modificado:
+            with open(caminho_opc_json, "w", encoding="utf-8") as f_opc:
+                json.dump(cfg_opc, f_opc, indent=2, ensure_ascii=False)
+            print("➔ Velocidade nominal, fator_sprint, rampas e banda morta sincronizados automaticamente em 'config_opc_v4.json'.")
+    except Exception as e:
+        print(f"⚠️ Aviso ao sincronizar 'config_opc_v4.json': {e}")
+
 # =====================================================================
 # 6. GERAÇÃO AUTOMÁTICA DE CÓDIGO AUTÔNOMO E CONTROLADORES LIVE
 # =====================================================================
@@ -624,6 +662,38 @@ cod_graf = (
 with open(os.path.join(dir_atual, "controlador_velocidade_grafana_v4.py"), "w", encoding="utf-8") as f:
     f.write(cod_graf)
 print("➔ Controlador Grafana live gerado em 'controlador_velocidade_grafana_v4.py'.")
+
+# 4. Gerar obter_dados_grafana_v4.py
+caminho_tpl_obter = os.path.join(dir_atual, "templates", "obter_dados_grafana_v4.template.py")
+if os.path.exists(caminho_tpl_obter):
+    with open(caminho_tpl_obter, "r", encoding="utf-8") as f:
+        cod_obter = f.read()
+
+    tele_cfg = cfg_opc.get("telemetria_influx", {}) if 'cfg_opc' in locals() and isinstance(cfg_opc, dict) else {}
+    g_url = cfg.get("Grafana_URL", tele_cfg.get("grafana_url", "http://10.46.12.163:3000")) if 'cfg' in locals() else "http://10.46.12.163:3000"
+    g_bucket = cfg.get("Grafana_Bucket", tele_cfg.get("database", tele_cfg.get("bucket", "Segue"))) if 'cfg' in locals() else "Segue"
+    g_meas = cfg.get("Grafana_Measurement", tele_cfg.get("measurement_origem", "512")) if 'cfg' in locals() else "512"
+    g_ds = str(cfg.get("Grafana_Datasource", "17")) if 'cfg' in locals() else "17"
+    g_output = cfg.get("Arquivo_Dados", "dados_completos_fabrica.csv") if 'cfg' in locals() else "dados_completos_fabrica.csv"
+    g_linha = cfg_opc.get("identificacao_linha", {}).get("linha", "512") if 'cfg_opc' in locals() and isinstance(cfg_opc, dict) else "512"
+
+    cod_obter = (
+        cod_obter
+        .replace("__DATA_GERACAO__", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        .replace("__LINHA__", str(g_linha))
+        .replace("__GRAFANA_URL__", str(g_url))
+        .replace("__GRAFANA_USER__", "admin")
+        .replace("__GRAFANA_PASSWORD__", "!ambev2021")
+        .replace("__GRAFANA_TOKEN__", "")
+        .replace("__DATASOURCE_SELECTOR__", str(g_ds))
+        .replace("__BUCKET__", str(g_bucket))
+        .replace("__MEASUREMENT__", str(g_meas))
+        .replace("__ORG__", "ABinbev")
+        .replace("__OUTPUT_FILE__", str(g_output))
+    )
+    with open(os.path.join(dir_atual, "obter_dados_grafana_v4.py"), "w", encoding="utf-8") as f:
+        f.write(cod_obter)
+    print("➔ Extrator de dados gerado em 'obter_dados_grafana_v4.py'.")
 
 # =====================================================================
 # 7. EXPORTAÇÃO CSV COMPLETA COM CÓDIGOS DE MOTIVO

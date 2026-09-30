@@ -93,3 +93,19 @@ cd Otimizador_CMA
 Ambos os scripts imprimirão no console um relatório final pronto contendo:
 1. As condições globais de nível seguro para rodar a **Velocidade Alta (100%)**.
 2. Os parâmetros de **REDUZIR (Start)** e **LIGAR (Clear)** e as respectivas velocidades reduzidas para cada buffer de proteção da máquina.
+
+---
+
+## ⚡ Controlador de Velocidade V4 (Versão Atual de Produção)
+
+A pasta [`Controle_Velocidade_4/`](Controle_Velocidade_4/) contém a arquitetura **V4** de controle industrial, com:
+* **Filtros Anti-Ruído em Software:** Mediana móvel (N=3), Debounce temporal e EWMA (alfa = 0.65).
+* **Balanço de Massa Feedforward:** Proteção preditiva antecipando variações com os 4 buffers (B1 a B4).
+* **Proteção Mecânica:** Slew Rate Limiter parametrizado por tempo em segundos (0 a 100% nominal).
+* **Comunicação Direta OPC UA:** Leitura instantânea por *Subscription* e despacho de setpoints no CLP.
+* **Geração de Imagens e Gráficos:** Curva de convergência e gráficos diários comparativos de produção.
+* **Container Docker:** Imagem autocontida pronta para rodar no Docker Compose.
+
+Consulte a documentação completa no manual:  
+👉 **[Controle_Velocidade_4/README.md](Controle_Velocidade_4/README.md)** e **[MANUAL_CLIENTE_OPC_V4.md](Controle_Velocidade_4/MANUAL_CLIENTE_OPC_V4.md)**.
+

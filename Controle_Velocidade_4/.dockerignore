@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.csv
+*.png
+*.txt
+relatorio_*
+graficos_*

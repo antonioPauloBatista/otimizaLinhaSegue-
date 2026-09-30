@@ -24,7 +24,11 @@ class ControladorVelocidadeV4:
                  tempo_rampa_descida_s=__TEMPO_RAMPA_DESCIDA_S__,
                  max_rampa=None, max_rampa_subida=None, max_rampa_descida=None,
                  pct_rampa_subida=None, pct_rampa_descida=None,
-                 banda_morta_cph=300.0):
+                 banda_morta_cph=300.0,
+                 fator_sprint=None,
+                 margem_sprint_b2_liga=15.0,
+                 margem_sprint_b2_desliga=5.0,
+                 tempo_minimo_sprint_s=30.0):
         # A velocidade de referência para o tempo de rampa mecânica é a Velocidade Máxima Nominal (vel_nom).
         # Conforme diretriz de automação e segurança: NUNCA se utiliza a sobremarcha/sprint como base da rampa.
         self.vel_nom = float(velocidade_nominal)
@@ -38,9 +42,16 @@ class ControladorVelocidadeV4:
         self.antecip_b4 = __ANTECIP_B4_OPT__
         self.min_mod = __MIN_MOD_OPT__
         self.peso_retomada = __PESO_RETOMADA_OPT__
-        self.fator_sprint = __FATOR_SPRINT_OPT__
+        self.fator_sprint = float(fator_sprint) if fator_sprint is not None else float(__FATOR_SPRINT_OPT__)
+        self.margem_sprint_b2_liga = float(margem_sprint_b2_liga)
+        self.margem_sprint_b2_desliga = float(margem_sprint_b2_desliga)
+        self.tempo_minimo_sprint_s = float(tempo_minimo_sprint_s)
         self.banda_morta = float(banda_morta_cph)
         self.alpha_ewma = __ALPHA_EWMA__
+
+        # Estado da Histerese e Anti-Hunting do Sprint
+        self.sprint_ativo = False
+        self.tempo_em_sprint_s = 0.0
 
         # Definição física das rampas mecânicas baseadas em TEMPO EM SEGUNDOS de 0 a 100% nominal:
         # taxa (CPH/s) = vel_nom / tempo_s
@@ -302,9 +313,29 @@ class ControladorVelocidadeV4:
         # B4 fica depois do Pasteurizador. Se o Pasteurizador não desacelerou, B4 não estrangula a Enchedora diretamente.
         w_ff_b4 = b4_alerta * deficit_escoamento_saida if self.b3_f < 75.0 else b4_alerta
 
-        # Condição de Sprint / Sobrevelocidade: Oportunidade com entrada abundante e saída livre
-        cond_sprint = (self.b2_f >= 60.0) and (self.b3_f <= (self.b3_lim - 10.0)) and (v_in >= 0.90 * v_nom) and (v_out >= 0.90 * v_nom)
-        w_sprint = 1.0 if cond_sprint else 0.0
+        # Condição de Sprint / Sobrevelocidade com Histerese e Anti-Hunting (desacoplada de v_in):
+        # 1. Limiares dinâmicos vinculados à calibração de b2_lim
+        b2_liga = min(60.0, max(38.0, self.b2_lim + self.margem_sprint_b2_liga))
+        b2_desliga = max(28.0, self.b2_lim + self.margem_sprint_b2_desliga)
+
+        # Condição de entrada no Sprint (Buffer de entrada folgado, saída livre e pasteurizador em ritmo compatível):
+        cond_entrada_sprint = (self.b2_f >= b2_liga) and (self.b3_f <= (self.b3_lim - 5.0)) and (v_out >= 0.85 * v_nom)
+
+        # Condição crítica de desativação imediata (segurança de processo):
+        cond_corte_imediato = (self.b2_f <= self.b2_lim) or (self.b3_f >= self.b3_lim) or (v_out < 0.70 * v_nom)
+
+        if not self.sprint_ativo:
+            if cond_entrada_sprint:
+                self.sprint_ativo = True
+                self.tempo_em_sprint_s = 0.0
+        else:
+            self.tempo_em_sprint_s += float(delta_t_s)
+            cond_saida_histerese = (self.b2_f < b2_desliga) or (self.b3_f > (self.b3_lim - 5.0)) or (v_out < 0.85 * v_nom)
+            if cond_corte_imediato or cond_saida_histerese:
+                self.sprint_ativo = False
+                self.tempo_em_sprint_s = 0.0
+
+        w_sprint = 1.0 if self.sprint_ativo else 0.0
         w_normal = min(b2_normal, b3_normal) * (1.0 - w_sprint)
 
         num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (w_ff_b4 * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)

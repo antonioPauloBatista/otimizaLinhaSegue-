@@ -1,172 +1,336 @@
-# Controle de Velocidade V4 (Data-Driven Feedforward & Slew-Rate)
+# Controlador de Velocidade V4 (Data-Driven Feedforward, Slew-Rate & OPC UA)
 
-Este diretório contém a versão **V4** do sistema inteligente de controle de velocidade e otimização de linhas de envase (cervejaria / refrigerantes), com foco na máquina mestra (Enchedora / Filler).
+Sistema inteligente de controle de velocidade e otimização para linhas de envase de bebidas (cervejaria / refrigerantes), focado na máquina mestra (**Enchedora / Filler**).
 
-A versão V4 incorpora todas as capacidades da V3 com evoluções de engenharia para resolver limitações de sensores em campo e proteger a integridade mecânica da máquina.
-
----
-
-## 🌟 Principais Inovações da V4
-
-1. **Tratamento de Dados 100% em Software (Zero Intervenção em Campo):**
-   - **Filtro Mediano Móvel (Janela de 3 amostras):** Elimina pulsos espúrios e picos isolados decorrentes de sensores óticos desordenados (ex: desvios súbitos de 40% que retornam em 30 segundos).
-   - **Debounce de Persistência:** Diferencia garrafas passando rapidamente de acúmulo consolidado na esteira.
-   - **EWMA (Exponentially Weighted Moving Average):** Converte a comutação discreta das fotocélulas em uma curva suave contínua de densidade de acúmulo (fator α = 0.65).
-
-2. **Balanço de Massa Feedforward (Máquinas Vizinhas):**
-   - Monitora em tempo real a velocidade da máquina na entrada (V_in, ex: ECI) e da máquina na saída (V_out, ex: Pasteurizador).
-   - Não depende apenas do nível acumulado dos buffers: antecipa o desvio antes que o buffer atinja o limite.
-
-3. **Retomada Sincronizada Pós-Parada com Tendência:**
-   - Calcula a taxa de aceleração da máquina da saída (dV_out/dt).
-   - Quando a máquina na saída destrava e começa a acelerar, a enchedora inicia imediatamente sua rampa de aceleração sem esperar o buffer de saída esvaziar por completo, eliminando o tempo morto de linha.
-
-4. **Proteção Mecânica Ativa (Slew-Rate Limiter Parametrizado por Tempo em Segundos):**
-   - Configuração física direta no padrão industrial de inversores: tempo em segundos para acelerar de 0 a 100% nominal (`Tempo_Rampa_Subida_s`) e tempo em segundos para desacelerar de 100% a 0 (`Tempo_Rampa_Descida_s`).
-   - A taxa de aceleração física é calculada com base estrita na **Velocidade Máxima Nominal** da enchedora (e **nunca** sobre a sobrevelocidade/sprint).
-   - O setpoint despachado pelo algoritmo é suavemente escalonado ciclo a ciclo (`taxa_cph_s * delta_t_s`), eliminando degraus bruscos, socos mecânicos no carrossel, quebra de garrafas e espumamento de cerveja.
-
-5. **Modo Sprint / Sobrevelocidade Condicionada:**
-   - Permite que a enchedora opere acima da nominal (ex: 101% a 105%) quando a linha está completamente desafogada (buffers de entrada e saída em zona segura e máquinas vizinhas rodando a ≥ 90% da nominal).
-
-6. **Rastreamento de Eventos de Parada e Modulação em JSON (Início e Fim):**
-   - Registra estruturadamente em arquivo JSON cada ocorrência de modulação ou parada (quando a enchedora opera fora de 100% nominal), contendo timestamp de início, timestamp de término (fim), duração, código do motivo e máquina causadora.
-   - **Regra de Processo:** Se a enchedora estiver operando em 100% nominal (regime pleno equilibrado), nenhum evento de perda é gerado no JSON.
+A versão V4 combina processamento de sinais em software, controle preditivo *Feedforward*, lógica Takagi-Sugeno, limitador de rampa mecânica (*Slew Rate Limiter*) e integração direta via protocolo industrial **OPC UA** ou supervisório **Grafana / InfluxDB**.
 
 ---
 
-## 📁 Ecossistema de Arquivos Gerados Automaticamente
+## 📖 1. Base Técnica de Funcionamento
 
-Assim como na versão anterior (V3), ao executar o [`otimizador_velocidade_v4.py`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/otimizador_velocidade_v4.py), o sistema calibra os dados históricos da linha e **gera ou atualiza automaticamente o ecossistema completo de arquivos**:
+### 1.1 A Enchedora como Máquina Mestra (*Benchmark Machine*)
+Na linha de envase, a Enchedora dita a cadência de produção de toda a fábrica:
+```text
+[DPL / Lavadora] ──> ( B1 ) ──> [ ECI ] ──> ( B2 ) ──> [[ ENCHEDORA ]] ──> ( B3 ) ──> [ Pasteurizador ] ──> ( B4 ) ──> [ Rotuladora ]
+```
+* **Impacto no Produto (Qualidade da Cerveja):**
+  * **TPO (Oxigênio Dissolvido / Total Packaged Oxygen):** Paradas bruscas ou oscilações de velocidade despressurizam o carrossel, rompem a barreira de gás carbônico (CO2) e puxam oxigênio atmosférico para dentro do gargalo. Isso oxida os compostos de lúpulo e malte, degrada o sabor (*stale flavor*) e encurta o prazo de validade da cerveja.
+  * **Espumamento (*Fobbing*) e Subenchimento:** Trancos mecânicos e acelerações repentinas nas estrelas de transferência agitam o líquido pressurizado, causando transbordamento de espuma e rejeição massiva de garrafas por nível incorreto na inspetora eletrônica.
+* **Impacto Mecânico:**
+  * O carrossel pesa dezenas de toneladas. Saltos bruscos de setpoint (*step changes*) causam choque mecânico (*jerk*), folga nas engrenagens de acionamento e quebra de garrafas nas guias de entrada e saída.
+* **Objetivo do Controlador V4:**
+  * Substituir paradas de emergência por **modulações suaves de velocidade** (marcha reduzida segura).
+  * Manter a enchedora o máximo de tempo na velocidade nominal de projeto ou em sobrevelocidade segura (*Sprint*).
 
-| Arquivo / Pasta | Tipo | Função e Conteúdo |
+---
+
+### 1.2 Física dos 4 Buffers e Balanço de Massa Feedforward
+Os buffers não se comportam como tanques de fluido contínuo; são esteiras com garrafas que sofrem compressões mecânicas, ondas de choque e vazios transitórios (*gaps*).
+
+* **Buffers Imediatos (Controle Reativo Local):**
+  * **Buffer B2 (Entrada Imediata: ECI ➔ Enchedora):** Evita falta de garrafas no carrossel. Se o acúmulo cai abaixo do limiar (ex: 27.3%), reduz a velocidade preventivamente.
+  * **Buffer B3 (Saída Imediata: Enchedora ➔ Pasteurizador):** Evita engavetamento na saída. Se o acúmulo ultrapassa o limiar (ex: 74.4%), freia a máquina para não colidir recipientes nas estrelas. Se atingir 80%, aplica desaceleração protetiva máxima.
+* **Buffers Extremos (Feedforward Preditivo de Longo Prazo):**
+  * **Buffer B1 (Extremo Entrada: DPL ➔ ECI):** Alerta antecipatório de falta. Quando B1 seca (abaixo de 16.0%), o algoritmo sabe minutos antes que o buffer B2 secará. Inicia uma descida suave antecipada, evitando parada brusca quando o vazio chegar à Enchedora.
+  * **Buffer B4 (Extremo Saída: Pasteurizador ➔ Rotuladora):** Alerta antecipatório de engavetamento. Se o fim de linha parar, B4 acumula. Quando o Pasteurizador começa a perder vazão de escoamento, o V4 reduz preventivamente a Enchedora, protegendo B3 de um transbordamento súbito.
+* **Retomada Sincronizada Pós-Parada:**  
+  Quando a máquina de jusante (Pasteurizador) destrava e sua aceleração se torna positiva, a Enchedora arranca imediatamente em sincronismo, sem esperar o esvaziamento completo das esteiras.
+
+---
+
+### 1.3 Pipeline de Tratamento de Sinais 100% em Software
+Para operar em esteiras com sensores ópticos com ruídos, gotas e reflexos sem exigir recalibração de campo:
+1. **Filtro Mediano Móvel (Janela N = 3):** Elimina quedas instantâneas espúrias (ex: leitura caindo de 60% para 18% por 1 ciclo e voltando para 60%).
+2. **Debounce de Persistência:** Distingue recipientes passando em alta velocidade de um acúmulo real e consolidado.
+3. **Filtro EWMA (Exponencial, fator alfa = 0.65):** Suaviza o chaveamento digital dos sensores discretos, gerando uma estimativa contínua da densidade de garrafas na esteira.
+
+---
+
+### 1.4 Proteção Mecânica Ativa: Rampa Slew Rate Parametrizada por Tempo
+A taxa de aceleração e desaceleração é ajustada de forma física e direta em segundos (padrão de parametrização de inversores de frequência):
+* **Tempo de Rampa de Subida (ex: 10.0s de 0 a 100%):** Aceleração progressiva e cautelosa.
+* **Tempo de Rampa de Descida (ex: 8.0s de 100% a 0):** Desaceleração rápida para proteção contra engavetamento.
+* **Referência Estrita:** A taxa (garrafas/hora por segundo) é calculada estritamente sobre a **Velocidade Máxima Nominal**, e nunca sobre sobremarcha.
+* **Banda Morta (300 CPH):** Evita microvariações contínuas de setpoint no motor (*hunting*).
+
+---
+
+## 🛠️ 2. Guia de Configuração e Execução do Otimizador
+
+O processo de otimização calibra os limiares matemáticos e as rampas mecânicas a partir do histórico real da sua linha.
+
+---
+
+### 2.0 Passo 0: Extrair Dados Recentes do Grafana / InfluxDB
+Para baixar automaticamente o histórico da fábrica no formato exato esperado pelo otimizador:
+
+```bash
+cd Controle_Velocidade_4
+python3 obter_dados_grafana_v4.py --start -7d
+```
+* O script divide a busca em blocos diários para evitar timeouts no Grafana.
+* Gera automaticamente o arquivo `dados_completos_fabrica.csv` com as colunas já nomeadas e alinhadas por Timestamp.
+* Se a máquina tiver uma tag/coluna de status de produção, ela pode ser puxada adicionando `--status-col <nome_campo>`.
+
+---
+
+### 2.1 Passo 1: Conferir o `config_colunas.json`
+O arquivo [`config_colunas.json`](config_colunas.json) mapeia as colunas do seu arquivo CSV histórico (`dados_completos_fabrica.csv`) para as variáveis internas do otimizador:
+
+```json
+{
+  "Arquivo_Dados": "dados_completos_fabrica.csv",
+  "Col_Buffer_Antes_Entrada": "",
+  "Col_Buffer_Entrada": "accumulation_percentage_dpl_to_ech_null",
+  "Col_Buffer_Saida": "accumulation_percentage_ech_to_pz_null",
+  "Col_Buffer_Pos_Saida": "accumulation_percentage_pz_to_epc_null",
+  "COL_V_Antes_Entrada": "",
+  "COL_V_Entrada": "speed_actual_cph_null_first_upstream_machine_1",
+  "COL_V_ECH": "speed_actual_cph_null_filler_1",
+  "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
+  "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_first_downstream_machine_1",
+  "Velocidade_Nominal_ECH": 94500,
+  "Tempo_Rampa_Subida_s": 10.0,
+  "Tempo_Rampa_Descida_s": 8.0,
+  "Fator_Sobremarcha": 1.01,
+  "Min_Modulacao": 0.75,
+  "Banda_Morta_CPH": 300.0,
+  "Alpha_Filtro_Buffer": 0.65,
+  "Janela_Mediana_Buffer": 3
+}
+```
+
+#### O que preencher em cada campo:
+| Campo | Descrição e O que Inserir | Exemplo |
 | :--- | :--- | :--- |
-| **`funcao_controle_v4.py`** | Código Python | Módulo autônomo com a classe `ControladorVelocidadeV4`, contendo os limiares sintonizados, rampas suaves, filtros e registro de eventos em JSON. Pronto para execução no CLP ou Edge. |
-| **`controlador_velocidade_live_v4.py`** | Script Live | Simulador interativo de bancada via terminal para testes de hipóteses com Reason Code (ID 0 a 99) e arquivo JSON. |
-| **`controlador_velocidade_grafana_v4.py`** | Script Live | Controlador de tempo real conectado via API ao Grafana/InfluxDB. Criado automaticamente do zero ou sincronizado com a velocidade nominal calibrada. |
-| **`parametros_controle_v4.json`** | Dados JSON | Limiares ótimos calculados pelo CMA-ES (buffers B1-B4, rampas, EWMA, fatores de modulação e sprint). |
-| **`parametros_query.json`** | Configuração InfluxQL | Mapeamento e credenciais da query para consulta do contador físico de garrafas no InfluxDB (DB `soda`, datasource `9`). |
-| **`dados_velocidade_otimizada_v4.csv`** | Dataset CSV | Série temporal completa contendo velocidade real vs. otimizada, colunas de buffers brutos e filtrados, motivos e máquinas causadoras. |
-| **`eventos_motivos_historico_v4.json`** | Eventos JSON | Histórico cronológico de todos os períodos de perda com início, término, duração e máquina causadora. |
-| **`resumo_producao_live_v4.txt`** | Relatório Único | Resumo consolidado de proporção do tempo ligado (uptime), produção em garrafas e causas de perda por tempo (arquivo único fixo, sem poluir a pasta). |
-| **`resumo_producao_live_v4.json`** | Dados JSON | Estrutura consolidada em JSON com tempos ligados/parados, detalhamento de velocidade e produção acumulada. |
-| **`relatorio_otimizacao_v4_<data>.txt`** | Relatório | Balanço executivo da calibração: ganho de garrafas, redução de socos mecânicos e paradas evitadas. |
-| **`graficos_velocidade_otimizada_v4/`** | Gráficos PNG | Pasta contendo os gráficos diários comparativos de todos os dias analisados no histórico. |
-| **`curva_convergencia_v4.png`** | Gráfico PNG | Gráfico demonstrativo da evolução da função custo ao longo das iterações da calibração. |
+| **`Arquivo_Dados`** | Nome ou caminho do CSV exportado com o histórico da linha. | `"dados_completos_fabrica.csv"` |
+| **`Col_Buffer_Antes_Entrada`** | Nome da coluna do **Buffer B1** (Extremo de entrada, ex: DPL ➔ ECI). Deixe `""` ou `null` se a linha não tiver esse sensor. | `""` ou `"accumulation_percentage_dpl_to_eci_null"` |
+| **`Col_Buffer_Entrada`** | Nome da coluna do **Buffer B2** (Entrada imediata da Enchedora: ECI ➔ ECH). | `"accumulation_percentage_dpl_to_ech_null"` |
+| **`Col_Buffer_Saida`** | Nome da coluna do **Buffer B3** (Saída imediata da Enchedora: ECH ➔ Pasteurizador). | `"accumulation_percentage_ech_to_pz_null"` |
+| **`Col_Buffer_Pos_Saida`** | Nome da coluna do **Buffer B4** (Extremo de saída, ex: Pasteurizador ➔ Rotuladora). Deixe `""` se não houver. | `"accumulation_percentage_pz_to_epc_null"` |
+| **`COL_V_Entrada`** | Coluna da velocidade da máquina a montante (**V_in**, ex: ECI ou Despaletizadora). | `"speed_actual_cph_null_first_upstream_machine_1"` |
+| **`COL_V_ECH`** | Coluna da velocidade real da **Enchedora** no histórico. | `"speed_actual_cph_null_filler_1"` |
+| **`COL_V_Saida`** | Coluna da velocidade da máquina a jusante (**V_out**, ex: Pasteurizador). | `"speed_actual_cph_null_pasteurizer"` |
+| **`Velocidade_Nominal_ECH`** | Velocidade de projeto máxima contínua da Enchedora em garrafas/hora (CPH). | `94500` |
+| **`Tempo_Rampa_Subida_s`** | Tempo em segundos para a máquina acelerar de 0 a 100% nominal (parâmetro do inversor). | `10.0` |
+| **`Tempo_Rampa_Descida_s`** | Tempo em segundos para a máquina desacelerar de 100% a 0 (parâmetro do inversor). | `8.0` |
+| **`Fator_Sobremarcha`** | Multiplicador de velocidade quando a linha estiver em sprint (ex: 1.01 = 101%). | `1.01` |
+| **`Min_Modulacao`** | Fração mínima da velocidade nominal antes de optar por parar (ex: 0.75 = 75%). | `0.75` |
+| **`Banda_Morta_CPH`** | Variação mínima em CPH para enviar novo comando ao motor (evita repique). | `300.0` |
 
 ---
 
-## 🌐 Integração Live Grafana / InfluxDB
+### 2.2 Passo 2: Executar o Otimizador V4
+Com o `config_colunas.json` preenchido e o CSV na pasta, execute:
 
-### 1. Conexão Resiliente e Autodescoberta
-O módulo [`controlador_velocidade_grafana_v4.py`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/controlador_velocidade_grafana_v4.py) opera como um controlador contínuo em malha supervisória, conectando-se a cada 30 segundos ao Grafana:
-- **Janela de 30 dias com `last()`**: Resgata o último dado válido de cada tag mesmo que um sensor tenha ficado inativo temporariamente.
-- **`group()` antes do `pivot()`**: Garante que o InfluxDB não retorne erro HTTP 400 ao pivotar tags com cardinalidades distintas.
-- **Filtro Numérico Estrito**: Lê com segurança medições de `accumulation_percentage` e `speed_actual_cph`.
-- **Suporte a Aliases**: Encontra automaticamente variáveis da linha `NS-512` (`lgf_to_uip`, `uip_to_ech`, `ech_to_pz`, `pz_to_rot`, `filler_1`, `eci_1`, `pasteurizer`) ou mapeamentos customizados de `config_colunas.json`.
+```bash
+cd Controle_Velocidade_4
+python3 otimizador_velocidade_v4.py
+```
 
-### 2. Formas de Configuração
-- **Linha de Comando (CLI):**
-  ```bash
-  python controlador_velocidade_grafana_v4.py --url "http://172.23.224.145:3000" --measurement "NS-512" --bucket "Segue" --ds "13"
-  ```
-- **Arquivo `config_colunas.json`:**
-  ```json
-  {
-    "Grafana_URL": "http://172.23.224.145:3000",
-    "Grafana_Measurement": "NS-512",
-    "Grafana_Bucket": "Segue",
-    "Grafana_Datasource": "13"
-  }
-  ```
-- **Direto no Topo do Script `controlador_velocidade_grafana_v4.py`:**
-  Editando as variáveis globais `GRAFANA_URL`, `MEASUREMENT`, etc.
+#### O que o otimizador faz durante a execução:
+1. Carrega os dados e aplica o pipeline anti-ruído (Mediana N=3 + EWMA 0.65).
+2. Executa a calibração matemática via CMA-ES buscando a melhor combinação de limiares dos buffers (B1, B2, B3, B4).
+3. **Recompila e salva** os módulos e parâmetros prontos:
+   * [`funcao_controle_v4.py`](funcao_controle_v4.py) (Função autônoma do controlador)
+   * [`parametros_controle_v4.json`](parametros_controle_v4.json) (Parâmetros ótimos)
+   * [`obter_dados_grafana_v4.py`](obter_dados_grafana_v4.py) (Extrator de histórico Grafana com paridade de colunas)
+   * [`controlador_velocidade_live_v4.py`](controlador_velocidade_live_v4.py) (Simulador interativo de bancada)
+4. **Gera as Imagens e Gráficos de Produção:**
+   * Pasta **`graficos_velocidade_otimizada_v4/`**: Imagens `.png` de cada dia com o comparativo `Velocidade Real vs V4 Otimizada`, buffers e motivos.
+   * Arquivo **`curva_convergencia_v4.png`**: Gráfico demonstrando a minimização da função custo e convergência do algoritmo.
+   * Arquivo **`relatorio_otimizacao_v4_<data>.txt`**: Resumo de garrafas ganhas e paradas evitadas.
 
-### 3. Diagnóstico e Resumo Consolidado do Tempo Ligado (`Ctrl+C`)
-- **Resumo do Tempo Ligado (Uptime vs Parada)**: Mostra claramente o tempo em que a enchedora real passou ligada vs parada e quanto o controlador V4 proporcionou de tempo ativo adicional (uptime recuperado).
-- **Detalhamento do Tempo Ligado**: Proporção do tempo em operação nominal plena (100%), sprint (>100%) e modulação suave (<100%).
-- **Resumo de Produção no Tempo Ligado**: Garrafas reais vs V4, saldo de garrafas geradas a mais e vazão média efetiva quando em operação.
-- **Consolidação de Causas/Falhas**: Em vez de gerar vários registros ou relatórios picados, consolida o tempo total e a porcentagem que cada causa ou máquina roubou da linha em uma tabela limpa.
-- **Arquivo Único Fixo (`resumo_producao_live_v4.txt`)**: Não gera múltiplos arquivos com datas diferentes; mantém sempre atualizado o resumo da sessão mais recente em arquivo fixo de texto e em JSON (`resumo_producao_live_v4.json`).
+---
 
-### 4. Validação Física de Produção Real via Contador (`parametros_query.json`)
-Para garantir auditoria precisa dos ganhos de produção e comprovar que o aumento de velocidade se converteu em garrafas físicas envasadas (e não em esteira girando a vazio durante purgas ou falta de produto), o controlador V4 integra a leitura em tempo real do **Contador Totalizador de Embalagens**:
+## 🏭 3. Configuração do CLP / OPC UA (`config_opc_v4.json`)
 
-- **Localização do Arquivo de Configuração:**
-  O arquivo fica na mesma pasta do script live: [`Controle_Velocidade_4/parametros_query.json`](file:///home/antonio/Projetos/OtimizadorSegue/Controle_Velocidade_4/parametros_query.json).
-  O script busca prioritariamente o arquivo na sua própria pasta (`os.path.dirname(__file__)`), permitindo que seja executado de qualquer diretório sem necessidade de argumentos adicionais.
+Para conectar o controlador ao CLP físico da fábrica através do módulo [`cliente_opc_v4.py`](cliente_opc_v4.py), preencha o arquivo [`config_opc_v4.json`](config_opc_v4.json):
 
-> [!IMPORTANT]
-> **Arquitetura de Fontes de Dados Distintas (Dual-Datasource):**
-> - **Contador Físico de Garrafas:** Consulta realizada no banco **`soda-template`** (Datasource ID `8` - Nome: `SODA Template`, UID: `qbSajtHSz`) via linguagem **InfluxQL** contra a tabela `"Filler"`.
-> - **Buffers (B1..B4) e Velocidades:** Consultas dinâmicas de esteiras e controle executadas no bucket **`Segue`** (Datasource ID `13` - Nome: `Segue`, UID: `ef1kgorem6by8f`) via linguagem **FLUX**.
-> 
-> Essa separação de bancos é mandatória: o bucket `Segue` armazena telemetrias de alta frequência das esteiras (porcentagem de acúmulo e velocidades), enquanto a base `soda-template` armazena os totalizadores industriais de produção das máquinas.
-
-- **Estrutura do `parametros_query.json`:**
-  ```json
-  {
-    "config": {
-      "grafana_url": "http://172.23.224.145:3000",
-      "grafana_user": "admin",
-      "grafana_password": "!ambev2021",
-      "database": "soda-template",
-      "datasource_selector": "8"
-    },
-    "queries": [
-      {
-        "description": "Enchedora contagem de produto",
-        "equipment_type": "Filler",
-        "tags": {
-          "equipment_name": "NS-05410-ENCHEDORA 01"
-        },
-        "fields": {
-          "Packaging Machine Production Counter - Total": "1.14.37.162.2.24-1.32-1.0.7275"
+```json
+{
+  "servidor_opc": {
+    "url": "opc.tcp://192.168.1.10:4840",
+    "usuario": "",
+    "senha": "",
+    "timeout_s": 5.0,
+    "reconectar_delay_s": 3.0,
+    "publishing_interval_ms": 500
+  },
+  "heartbeat": {
+    "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.OTIMIZADOR.HEARTBEAT",
+    "intervalo_s": 1.0,
+    "modo": "pulse_one"
+  },
+  "maquinas": {
+    "tag_velocidade_montante": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL.VELOCIDADE_ATUAL",
+    "tag_velocidade_atual": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH.VELOCIDADE_ATUAL",
+    "tag_velocidade_jusante": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ.VELOCIDADE_ATUAL",
+    "tag_escrita_setpoint": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH.SETPOINT_VELOCIDADE",
+    "tag_segue_habilitado": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.GERAL.HABILITADO",
+    "velocidade_nominal": 94500.0
+  },
+  "buffers": {
+    "B2": {
+      "nome": "B2 - Entrada Imediata",
+      "capacidade_area_total_m2": 32.0,
+      "setores": [
+        {
+          "ordem": 1,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.106B2",
+          "comprimento_m": 2.9,
+          "largura_m": 0.4,
+          "contato_ativo": false,
+          "habilitado": true
         }
-      }
-    ]
+      ]
+    }
+  },
+  "controle": {
+    "ciclo_controle_s": 10.0,
+    "tempo_rampa_subida_s": 10.0,
+    "tempo_rampa_descida_s": 8.0,
+    "banda_morta_cph": 300.0,
+    "modo_sombra": true
   }
-  ```
+}
+```
 
-- **Mecânica de Validação Ciclo a Ciclo (a cada 30 segundos):**
-  1. **Consulta Instantânea via InfluxQL:** Executa uma requisição ultra-rápida (menos de 15 ms) via proxy da API do Grafana resgatando o último valor registrado:
-     `SELECT LAST("Packaging Machine Production Counter - Total") FROM "Filler" WHERE "equipment_name"::tag = 'NS-05410-ENCHEDORA 01'`
-  2. **Cálculo da Produção Física Real:**
-     `Delta_Contador = Contador_Atual - Contador_Anterior`
-  3. **Detecção de Falso Giro (Motor Girando em Vazio):**
-     Se a velocidade do motor estiver alta (ex: 45.000 garrafas/h), mas `Delta_Contador == 0`, o sistema detecta e exibe:
-     `⚠️ Validação Física: Motor Girando sem Garrafas (+0 gf no sensor) | Contador: 15,420,800 gf`
-     Dessa forma, a produção real registrada é zero, impedindo a geração de ganhos fictícios.
-  4. **Confirmação de Produção Real:**
-     Havendo incremento físico (`Delta_Contador > 0`), o valor do sensor é registrado como a produção real do ciclo:
-     `✅ Validação Física: Produção Real Confirmada: +380 gf físicas no ciclo | Contador: 15,421,150 gf`
-  5. **Regra de Parada Real:**
-     Quando a máquina real está parada (0 garrafas/h), o controlador V4 também para em 0 garrafas/h em segurança:
-     `🛑 Validação Física: Parada Real Confirmada (+0 gf) | Contador: 15,420,800 gf`
-  6. **Fallback Resiliente:**
-     Caso o contador físico esteja inacessível ou offline, o sistema estima a produção pela velocidade do motor com aviso explícito no console `(Estimada por Velocidade)`, mantendo a operação contínua.
+#### Pontos Principais do `config_opc_v4.json`:
+* **`url`**: Endereço do Servidor OPC UA do CLP ou Gateway industrial.
+* **`usuario` e `senha` (Opcional)**: Se o servidor OPC UA exigir autenticação, informe o usuário e senha (ou defina via variáveis de ambiente `OPC_USER` e `OPC_PASSWORD`). Se deixados vazios `""`, a conexão é estabelecida de forma anônima (`None`).
+* **`tag_escrita_setpoint`**: Tag do CLP onde o setpoint calculado em CPH será gravado.
+* **`tag_segue_habilitado`**: Tag booleana da IHM/CLP que permite ligar/desligar a modulação. Quando `False`, o V4 entra em bypass automaticamente.
+* **`heartbeat.modo` (3 Modos Suportados)**:
+  * **`pulse_one`** *(Padrão de Fábrica)*: O controlador sempre escreve `1` (ou `True`) e o CLP é quem zera a tag de volta para `0` (handshake ativo).
+  * **`toggle`**: O controlador inverte o booleano a cada segundo (`True` ➔ `False` ➔ `True`...), e o CLP detecta bordas de subida/descida.
+  * **`counter`**: O controlador incrementa um número de `0` até `32767` (Int16) a cada pulso.
+* **`fator_sprint`**: Multiplicador de velocidade em sobremarcha quando a linha estiver livre (ex: `1.03` = 103%).
+* **`margem_sprint_b2_liga` e `margem_sprint_b2_desliga`**: Histerese de garrafas no buffer de entrada B2 para ligar (+15%) e desligar (+5%) o sprint com estabilidade.
+* **`tempo_minimo_sprint_s`**: Tempo mínimo de permanência em sobremarcha (ex: `60.0`s) para eliminar repicadas mecânicas.
+* **`tag_status_maquina`**: Tag do CLP de status operacional da máquina (usada para diagnóstico de parada própria).
+* **`telemetria_influx`**: Transmissão em segundo plano para Grafana/InfluxDB sem atrasar o loop de controle.
+* Para ver a tabela completa de todos os parâmetros detalhados, consulte a Seção 3 do [MANUAL_CLIENTE_OPC_V4.md](MANUAL_CLIENTE_OPC_V4.md#3-dicionário-completo-de-parâmetros-config_opc_v4json).
 
 ---
 
-## 🚀 Como Executar
+## 🐳 4. Como Gerar a Imagem Docker e Rodar com Docker Compose
 
-### 1. Configurar Mapeamento da Linha (Opcional se já estiver configurado)
-```bash
-python assistente_configuracao.py
+O diretório já possui o [`Dockerfile`](Dockerfile) autocontido e o arquivo [`docker-compose.yml`](docker-compose.yml) configurado.
+
+### 4.1 Anatomia do `Dockerfile`:
+O `Dockerfile` copia todos os módulos necessários diretamente para a imagem, dispensando mapeamento de volumes de código e fixando o Modo Sombra por padrão:
+```dockerfile
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MODO_SOMBRA=true
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir asyncua==1.1.5 cryptography
+
+COPY cliente_opc_v4.py .
+COPY funcao_controle_v4.py .
+COPY gerenciador_buffers.py .
+COPY motivos_modulacao_enum.json .
+COPY config_opc_v4.json .
+
+CMD ["python", "cliente_opc_v4.py"]
 ```
 
-### 2. Rodar a Otimização e Digital Twin
-```bash
-python otimizador_velocidade_v4.py
-```
-*O script calibra os parâmetros, salva os resultados, recompila a função autônoma e gera ou sincroniza todos os módulos live.*
+---
 
-### 3. Teste Interativo de Bancada
+### 4.2 Gerando a Imagem e Subindo com Docker Compose
+
+Execute diretamente de dentro da pasta `Controle_Velocidade_4`:
+
 ```bash
-python controlador_velocidade_live_v4.py
+cd Controle_Velocidade_4
+
+# 1. Construir a imagem Docker e iniciar o serviço em segundo plano:
+docker compose up -d --build
+
+# 2. Visualizar os logs estruturados e o fluxograma sinótico da linha:
+docker logs -f controlador-v4-opc
+
+# 3. Parar o serviço:
+docker compose down
 ```
 
-### 4. Execução em Produção via Grafana / InfluxDB
+---
+
+### 4.3 Gerando a Imagem via Docker Build e Exportando (.tar) para Fábrica / Edge
+
+Em ambientes industriais onde o servidor/IPC na fábrica **não possui acesso à internet** para baixar dependências, você pode compilar a imagem na sua máquina e exportar o arquivo `.tar`:
+
 ```bash
-python controlador_velocidade_grafana_v4.py
+cd Controle_Velocidade_4
+
+# 1. Gerar a imagem com tag de versão:
+docker build -t controlador-v4-opc:latest .
+
+# 2. Exportar (salvar) a imagem em arquivo compactado para levar via pendrive/SCP:
+docker save controlador-v4-opc:latest | gzip > controlador-v4-opc.tar.gz
+
+# (Opcional) Sem compactação gzip:
+# docker save -o controlador-v4-opc.tar controlador-v4-opc:latest
 ```
+
+#### No IPC / Servidor da Fábrica (Máquina Destino sem Internet):
+```bash
+# 1. Carregar a imagem a partir do arquivo exportado:
+docker load < controlador-v4-opc.tar.gz
+
+# 2. Iniciar o container usando a imagem carregada:
+docker run -d \
+  --name controlador-v4-opc \
+  --restart always \
+  -e MODO_SOMBRA=true \
+  --network host \
+  controlador-v4-opc:latest
+
+# 3. Acompanhar os logs ao vivo:
+docker logs -f controlador-v4-opc
+```
+
+> **Como liberar a escrita no CLP no futuro (Modo Ativo):**  
+> Altere a variável de ambiente para `MODO_SOMBRA=false` (no `docker-compose.yml` ou no `docker run -e MODO_SOMBRA=false`) e recrie o container. Caso contrário, ele permanecerá protegido em modo sombra (apenas leitura).
+
+## 📊 5. Modos Alternativos: Live Grafana e Simulador de Bancada
+
+### 5.1 Simulador Interativo de Bancada
+Permite ao operador digitar valores manuais de buffers e velocidades no terminal para testar as reações do algoritmo e o motivo disparado:
+```bash
+python3 Controle_Velocidade_4/controlador_velocidade_live_v4.py
+```
+
+### 5.2 Controlador Live via Grafana / InfluxDB
+Usado para auditoria e simulação em malha aberta a partir dos dados gravados no InfluxDB:
+```bash
+python3 Controle_Velocidade_4/controlador_velocidade_grafana_v4.py
+```
+
+---
+
+## 🏷️ 6. Tabela de Causas-Raiz e Diagnóstico Operacional
+
+O V4 categoriza cada decisão de velocidade em códigos mapeados em [`motivos_modulacao_enum.json`](motivos_modulacao_enum.json):
+
+| ID | Código | Categoria | Descrição Operacional |
+| :---: | :--- | :--- | :--- |
+| **0** | `NORMAL_FULL` | Operação Normal | Enchedora operando a 100% da velocidade nominal plena. |
+| **1** | `SPRINT_SOBREVELOCIDADE` | Oportunidade | Linha com entrada abundante e saída livre. Operação a 101% - 105%. |
+| **10** | `FALTA_ENTRADA_B2` | Modulação / Gargalo | Buffer imediato B2 baixo. Modulação suave para evitar parada por falta. |
+| **20** | `ACUMULO_SAIDA_B3` | Modulação / Gargalo | Buffer imediato B3 alto. Redução de velocidade para evitar colisão. |
+| **25** | `RETOMADA_ACELERANDO_SAIDA` | Retomada | Pasteurizador acelerando. Enchedora retoma velocidade antecipadamente. |
+| **30** | `CONFLITO_ENTRADA_SAIDA` | Conflito | B2 baixo e B3 alto simultaneamente. Prioridade para proteção de saída. |
+| **40** | `FEEDFORWARD_ALERTA_B1` | Preditivo Montante | Buffer extremo B1 secando. Redução suave preventiva antes de afetar B2. |
+| **50** | `FEEDFORWARD_ALERTA_B4` | Preditivo Jusante | Fim de linha acumulando. Pasteurizador perdendo vazão e limitando enchedora. |
+| **60** | `LIMITADOR_RAMPA_MECANICA` | Inércia | Transição suave limitada pela rampa de aceleração/desaceleração. |
+| **70** | `MAQUINA_ENTRADA_LENTA` | Balanço de Massa | ECI operando abaixo de 85% da capacidade. |
+| **80** | `MAQUINA_SAIDA_LENTA` | Balanço de Massa | Pasteurizador operando abaixo de 85% da capacidade. |
+| **90** | `PARADA_SEGURANCA_BUFFER` | Intertravamento | Buffers em níveis críticos simultâneos. |
+| **91** | `PARADA_INTERTRAV_ENTRADA` | Intertravamento | Falta total de embalagens na entrada (B2 <= 10%). |
+| **92** | `PARADA_INTERTRAV_SAIDA` | Intertravamento | Saída completamente bloqueada (B3 >= 90%). |

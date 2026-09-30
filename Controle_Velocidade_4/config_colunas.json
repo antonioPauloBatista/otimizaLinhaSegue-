@@ -9,12 +9,12 @@
   "COL_V_ECH": "speed_actual_cph_null_filler_1",
   "COL_V_Saida": "speed_actual_cph_null_pasteurizer",
   "COL_V_Entrada_Pos_Saida": "speed_actual_cph_null_first_downstream_machine_1",
-  "Velocidade_Nominal_ECH": 94500,
+  "Velocidade_Nominal_ECH": 90000,
   "Limiar_Velocidade_Manutencao": 10000,
   "Filtro_Minutos_Parada_Longa": 10,
   "Fator_Sobremarcha": 1.03,
   "Min_Modulacao": 0.75,
-  "Max_Modulacao": 1.00,
+  "Max_Modulacao": 1.0,
   "Tempo_Rampa_Subida_s": 10.0,
   "Tempo_Rampa_Descida_s": 8.0,
   "Max_Rampa_CPH_Passo": 1000.0,
@@ -23,5 +23,10 @@
   "Banda_Morta_CPH": 100.0,
   "Alpha_Filtro_Buffer": 0.65,
   "Janela_Mediana_Buffer": 3,
-  "Arquivo_CSV_Live": "dados_live_grafana_v4.csv"
+  "Arquivo_CSV_Live": "dados_live_grafana_v4.csv",
+  "Col_Status_Maquina": "",
+  "Grafana_URL": "http://10.46.12.163:3000",
+  "Grafana_Bucket": "Segue",
+  "Grafana_Measurement": "512",
+  "Grafana_Datasource": "17"
 }

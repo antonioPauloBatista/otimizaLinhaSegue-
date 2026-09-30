@@ -18,7 +18,11 @@ from funcao_controle_v4 import ControladorVelocidadeV4
 def test_slew_rate_e_motivo():
     print("Testando Slew Rate Assimétrico Proporcional à Velocidade da Linha...")
     # 1. Teste para Linha de 60.000 CPH (4.2% descida = 2520 CPH, 1.7% subida = 1020 CPH)
-    ctrl = ControladorVelocidadeV4(velocidade_nominal=60000, v_atual_inicial=60000)
+    ctrl = ControladorVelocidadeV4(
+        velocidade_nominal=60000, v_atual_inicial=60000,
+        tempo_rampa_subida_s=None, tempo_rampa_descida_s=None,
+        pct_rampa_descida=0.042, pct_rampa_subida=0.017
+    )
     assert ctrl.max_rampa_descida == 2520.0, f"Rampa descida esperada 2520.0, obtido {ctrl.max_rampa_descida}"
     assert ctrl.max_rampa_subida == 1020.0, f"Rampa subida esperada 1020.0, obtido {ctrl.max_rampa_subida}"
     
@@ -37,7 +41,11 @@ def test_slew_rate_e_motivo():
     print(f"  ✅ Subida Suave Cautelosa OK: +{delta_subida:.0f} CPH/passo (34 CPH/s)")
 
     # 2. Teste de Proporcionalidade Automática para Linha de 45.000 CPH (ex: PG502)
-    ctrl_45k = ControladorVelocidadeV4(velocidade_nominal=45000, v_atual_inicial=45000)
+    ctrl_45k = ControladorVelocidadeV4(
+        velocidade_nominal=45000, v_atual_inicial=45000,
+        tempo_rampa_subida_s=None, tempo_rampa_descida_s=None,
+        pct_rampa_descida=0.042, pct_rampa_subida=0.017
+    )
     assert ctrl_45k.max_rampa_descida == 1890.0, f"Rampa descida 45k esperada 1890.0, obtido {ctrl_45k.max_rampa_descida}"
     assert ctrl_45k.max_rampa_subida == 765.0, f"Rampa subida 45k esperada 765.0, obtido {ctrl_45k.max_rampa_subida}"
     print(f"  ✅ Autoajuste Universal Linha 45k OK: Descida = {ctrl_45k.max_rampa_descida:.0f} CPH | Subida = {ctrl_45k.max_rampa_subida:.0f} CPH")
@@ -50,6 +58,42 @@ def test_sprint_e_motivo():
     assert v > 60000, f"Sprint não ativado: velocidade={v}"
     assert m == 1, f"Motivo incorreto para Sprint: {m}"
     print(f"  ✅ Sprint OK: {v:.0f} CPH (> 60000 CPH) | Motivo ID [{m} - SPRINT_SOBREVELOCIDADE]")
+
+def test_sprint_histerese_anti_hunting():
+    print("Testando Modo Sprint com Histerese Dinâmica e Anti-Hunting (1.038)...")
+    ctrl = ControladorVelocidadeV4(velocidade_nominal=90000, fator_sprint=1.038)
+    
+    # 1. Entrada com DPL lenta (v_in=60k < 90% de 90k)
+    v1, m1 = ctrl.calcular_velocidade(50, 50, 40, 50, v_in=60000, v_out=90000, delta_t_s=10)
+    assert v1 == 93420.0, f"Esperado 93420.0 CPH, obtido {v1}"
+    assert m1 == 1, f"Esperado Motivo 1 (Sprint), obtido {m1}"
+    assert ctrl.sprint_ativo == True
+    print(f"  ✅ Entrada no Sprint Desacoplada de v_in OK: {v1:.0f} CPH (Motivo ID 1)")
+    
+    # 2. Histerese: B2 cai para 40% (entre 34.4% e 44.4%) -> Mantém sprint
+    v2, m2 = ctrl.calcular_velocidade(50, 40, 40, 50, v_in=60000, v_out=90000, delta_t_s=10)
+    assert v2 == 93420.0
+    assert m2 == 1
+    assert ctrl.sprint_ativo == True
+    print(f"  ✅ Histerese / Retenção Segura OK: Mantido em Sprint a {v2:.0f} CPH com B2=40%")
+    
+    # 3. Corte por falta crítica: B2 cai para 25% (b2_f cai abaixo de b2_desliga)
+    v3, m3 = ctrl.calcular_velocidade(50, 25, 40, 50, v_in=60000, v_out=90000, delta_t_s=10)
+    assert ctrl.sprint_ativo == False
+    assert v3 <= 90000.0
+    print(f"  ✅ Desativação por Histerese OK: Saiu do Sprint para {v3:.0f} CPH com B2 em queda")
+    
+    # 4. Anti-hunting: B2 recupera para 40% (ainda abaixo de 44.4%) -> Não religa
+    v4, m4 = ctrl.calcular_velocidade(50, 40, 40, 50, v_in=60000, v_out=90000, delta_t_s=10)
+    assert ctrl.sprint_ativo == False
+    assert v4 == 90000.0
+    print("  ✅ Anti-Hunting OK: Não religou em 40% (exige subida acima de 44.4%)")
+    
+    # 5. Reativação: B2 sobe para 55%
+    v5, m5 = ctrl.calcular_velocidade(50, 55, 40, 50, v_in=60000, v_out=90000, delta_t_s=10)
+    assert ctrl.sprint_ativo == True
+    assert v5 == 93420.0
+    print(f"  ✅ Reativação com B2=55% OK: {v5:.0f} CPH")
 
 def test_retomada_e_motivo():
     print("Testando Retomada Antecipada por Tendência e Motivo em Faixa Segura (B3 = 78%)...")
@@ -100,7 +144,7 @@ def test_convergencia_exata_sem_offset_banda_morta():
     print("Testando Convergência Exata da Rampa Lenta sem Congelamento por Banda Morta...")
     # Rampa conservadora de 500 CPH/passo com banda morta de 300 CPH
     # Velocidade inicial 58.250 CPH força um resíduo de 250 CPH (< 300 CPH da banda morta) ao atingir 59.750 CPH
-    ctrl = ControladorVelocidadeV4(velocidade_nominal=60000, v_atual_inicial=58250, max_rampa=500.0, banda_morta_cph=300.0)
+    ctrl = ControladorVelocidadeV4(velocidade_nominal=60000, v_atual_inicial=58250, max_rampa=500.0, banda_morta_cph=300.0, fator_sprint=1.0)
     
     # Executa ciclos sucessivos com buffers nominais desimpedidos da V4
     for _ in range(8):
@@ -518,22 +562,80 @@ def test_tempo_rampa_segundos_base_nominal_sem_sprint():
     print(f"  ✅ Degrau por segundo OK: +{delta_1s:.0f} CPH a cada 1 segundo (atinge 100% nominal em {t_sub}s).")
 
     # 4. Teste de descida protetiva em rampa
-    # Linha rodando a 94500, dá falta de garrafa na entrada (B2=5%)
+    # Linha rodando a 94500, dá falta de garrafa na entrada com parada a montante (B2=5%, v_in=0)
     ctrl_desc = ControladorVelocidadeV4(
         velocidade_nominal=v_nom,
         v_atual_inicial=v_nom,
         tempo_rampa_subida_s=t_sub,
         tempo_rampa_descida_s=t_desc
     )
-    v_desc_1s, _ = ctrl_desc.calcular_velocidade(50, 5, 50, 50, v_in=v_nom, v_out=v_nom, delta_t_s=1.0)
+    v_desc_1s, _ = ctrl_desc.calcular_velocidade(50, 5, 50, 50, v_in=0, v_out=v_nom, delta_t_s=1.0)
     delta_desc_1s = v_nom - v_desc_1s
     assert abs(delta_desc_1s - taxa_desc_esperada) < 1.0, f"Degrau de descida 1s incorreto: {delta_desc_1s} vs {taxa_desc_esperada}"
     print(f"  ✅ Frenagem controlada OK: -{delta_desc_1s:.0f} CPH a cada 1 segundo (freia 100% em {t_desc}s).")
 
+def test_sincronizacao_estrita_fator_sobremarcha():
+    print("Testando Sincronização Estrita do Fator de Sobremarcha (1.038 / config_colunas -> config_opc -> parametros -> controlador)...")
+    diretorio_base = os.path.dirname(os.path.abspath(__file__))
+    
+    # 1. Carrega config_colunas.json local da pasta de controle v4
+    caminho_colunas = os.path.join(diretorio_base, "config_colunas.json")
+    assert os.path.exists(caminho_colunas), f"config_colunas.json não encontrado em {caminho_colunas}"
+    with open(caminho_colunas, "r", encoding="utf-8") as f:
+        colunas_cfg = json.load(f)
+    fator_sobremarcha_esperado = float(colunas_cfg.get("Fator_Sobremarcha", 1.038))
+    
+    # 2. Carrega config_opc_v4.json
+    caminho_opc = os.path.join(diretorio_base, "config_opc_v4.json")
+    assert os.path.exists(caminho_opc), f"config_opc_v4.json não encontrado em {caminho_opc}"
+    with open(caminho_opc, "r", encoding="utf-8") as f:
+        opc_cfg = json.load(f)
+    fator_opc = float(opc_cfg["controle"].get("fator_sprint", 0.0))
+    assert abs(fator_opc - fator_sobremarcha_esperado) < 1e-4, (
+        f"DIVERGÊNCIA CRÍTICA: config_opc_v4.json tem fator_sprint={fator_opc} diferente de "
+        f"config_colunas.json ({fator_sobremarcha_esperado})!"
+    )
+
+    # 3. Carrega parametros_controle_v4.json
+    caminho_params = os.path.join(diretorio_base, "parametros_controle_v4.json")
+    assert os.path.exists(caminho_params), f"parametros_controle_v4.json não encontrado em {caminho_params}"
+    with open(caminho_params, "r", encoding="utf-8") as f:
+        params_cfg = json.load(f)
+    fator_params = float(params_cfg.get("fator_sprint", 0.0))
+    assert abs(fator_params - fator_sobremarcha_esperado) < 1e-4, (
+        f"DIVERGÊNCIA CRÍTICA: parametros_controle_v4.json tem fator_sprint={fator_params} diferente de "
+        f"config_colunas.json ({fator_sobremarcha_esperado})!"
+    )
+
+    # 4. Instancia o controlador padrão e verifica se assume exatamente esse fator
+    ctrl = ControladorVelocidadeV4(velocidade_nominal=90000.0, v_atual_inicial=90000.0)
+    assert abs(ctrl.fator_sprint - fator_sobremarcha_esperado) < 1e-4, (
+        f"ControladorVelocidadeV4 instanciado com fator_sprint={ctrl.fator_sprint} "
+        f"diferente de {fator_sobremarcha_esperado}"
+    )
+
+    # 5. Valida a velocidade física exata em modo sprint
+    # Condições de sprint: B2 alto (80%), B3 baixo (20%), V_in e V_out em 90k
+    v_sprint, motivo = ctrl.calcular_velocidade(50, 80, 20, 50, v_in=90000, v_out=90000, delta_t_s=10)
+    v_esperada = 90000.0 * fator_sobremarcha_esperado
+    assert abs(v_sprint - v_esperada) < 1e-1, f"Velocidade de sprint calculada incorreta: {v_sprint} vs {v_esperada}"
+    assert motivo == 1, f"Motivo deveria ser 1 (Sprint), obtido: {motivo}"
+
+    # 6. Audita otimizador_velocidade_v4.py para garantir que fator_sprint_opt está travado e não livre no CMA-ES
+    caminho_otimizador = os.path.join(diretorio_base, "otimizador_velocidade_v4.py")
+    with open(caminho_otimizador, "r", encoding="utf-8") as f:
+        conteudo_otimizador = f.read()
+    assert "fator_sprint_opt = float(FATOR_SOBREMARCHA)" in conteudo_otimizador, (
+        "FALHA DE REGRESSÃO: otimizador_velocidade_v4.py não está travando fator_sprint_opt com FATOR_SOBREMARCHA!"
+    )
+    print(f"  ✅ Sincronização Estrita Auditada com Sucesso: {fator_sobremarcha_esperado}x ({v_esperada:.0f} CPH a 90.000 nominal) propagado em todos os configs, scripts e instâncias.")
+
 if __name__ == "__main__":
+    test_sincronizacao_estrita_fator_sobremarcha()
     test_slew_rate_e_motivo()
     test_tempo_rampa_segundos_base_nominal_sem_sprint()
     test_sprint_e_motivo()
+    test_sprint_histerese_anti_hunting()
     test_retomada_e_motivo()
     test_trava_teto_retomada_seguranca()
     test_fast_path_b2_queda_brusca()
@@ -545,7 +647,8 @@ if __name__ == "__main__":
     test_live_grafana_garrafas_e_relatorio()
     test_contador_producao_e_validacao_fisica()
     test_gravacao_continua_csv_live()
-    print("\n🎉 TODOS OS TESTES UNITÁRIOS COM IDENTIFICAÇÃO DE MÁQUINA, FAST-PATH, TRAVA DE TETO, BANDA MORTA, RELATÓRIO LIVE, CONTADOR FÍSICO, CSV CONTÍNUO E TEMPO EM SEGUNDOS PASSARAM COM SUCESSO!")
+    print("\n🎉 TODOS OS TESTES UNITÁRIOS COM IDENTIFICAÇÃO DE MÁQUINA, FAST-PATH, TRAVA DE TETO, BANDA MORTA, RELATÓRIO LIVE, CONTADOR FÍSICO, CSV CONTÍNUO, TEMPO EM SEGUNDOS E SINCRONIZAÇÃO ESTRITA DE SOBREVELOCIDADE PASSARAM COM SUCESSO!")
+
 
 
 

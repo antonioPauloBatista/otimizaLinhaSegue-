@@ -1,0 +1,26 @@
+[
+  {
+    "inicio": "2026-09-12 14:00:00",
+    "fim": "2026-09-12 14:00:30",
+    "duracao_segundos": 30.0,
+    "motivo_id": 1,
+    "motivo_codigo": "SPRINT_SOBREVELOCIDADE",
+    "motivo_descricao": "Sobrevelocidade / Sprint (> 100%) - Linha Desimpedida",
+    "maquina_causadora": "Nenhuma (Oportunidade de Ganho)",
+    "localizacao_linha": "Linha Livre",
+    "categoria": "OPORTUNIDADE",
+    "velocidade_cph": 62280.0
+  },
+  {
+    "inicio": "2026-09-12 14:00:30",
+    "fim": "2026-09-12 14:01:30",
+    "duracao_segundos": 60.0,
+    "motivo_id": 10,
+    "motivo_codigo": "FALTA_ENTRADA_B2",
+    "motivo_descricao": "Falta de Garrafas no Buffer de Entrada (B2 ECI-Enchedora)",
+    "maquina_causadora": "ECI",
+    "localizacao_linha": "Entrada da Enchedora",
+    "categoria": "ENTRADA",
+    "velocidade_cph": 46105.6
+  }
+]

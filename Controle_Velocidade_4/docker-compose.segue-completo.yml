@@ -1,0 +1,220 @@
+# Stack Completa Segue + Controlador de Velocidade V4 OPC
+services:
+  # Postgres DB - Stores all line configuration and alerts
+  segue-postgres:
+    container_name: segue-postgres
+    image: docker.ambevdevs.com.br/brewtech_automation/segue/postgres/dev:20240823_327
+    restart: always
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - segue-network
+
+  segue-pgadmin:
+    container_name: segue-pgadmin
+    image: docker.ambevdevs.com.br/brewtech_automation/segue/pgadmin/dev:20240823_328
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "segue@admin.com"
+      PGADMIN_DEFAULT_PASSWORD: "SegueDBAdmin2019!"
+    ports:
+      - "1001:80"
+    depends_on:
+      - segue-postgres
+    networks:
+      - segue-network
+
+  # InfluxDB - Stores all modulation-related information, each 2s
+  segue-influxdb:
+    container_name: segue-influxdb
+    image: docker.ambevdevs.com.br/brewtech_automation/segue/influxdb/dev:20240821_295
+    security_opt:
+      - no-new-privileges:true
+    restart: always
+    ports:
+      - "8089:8086"
+    networks:
+      - segue-network
+    volumes:
+      - /home/segue/data/config:/etc/influxdb2
+      - /home/segue/data/db:/var/lib/influxdb2
+
+  # Grafana - Allows visualization of modulation execution data on dashboards
+  segue-grafana:
+    container_name: segue-grafana
+    image: acrsegueprod.azurecr.io/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: 'Segue'
+      GF_SECURITY_ADMIN_PASSWORD: 'm^@O&oqh5Ph{V)Do'
+      GF_LOG_LEVEL: error
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - segue-network  
+
+  # Redis - Backend communication & frontend cache
+  segue-redis:
+    container_name: segue-redis
+    image: redis:latest
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    command: ["redis-server", "--requirepass", "asfQWE123", "--maxmemory", "128M", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    networks:
+      - segue-network
+
+  # Backend API
+  segue-api:
+    container_name: segue-api
+    image: acrsegueprod.azurecr.io/segue-api:7.5.0.20260409.1
+    labels:
+      - traefik.http.routers.segue-api.rule=Host("${IP}") && PathPrefix("/api")
+      - traefik.http.services.segue-api.loadbalancer.server.port=8008
+      - traefik.enable=true
+    env_file:
+      - stack.env
+    restart: always
+    ports:
+      - "8009:8008"
+    depends_on:
+      - segue-postgres
+    command: sh -c "sh scripts/runserver.sh"
+    volumes:
+      - certs:/app/certs
+    networks:
+      - segue-network
+
+  # Scheduler
+  segue-modulation-scheduler:
+    container_name: segue-modulation-scheduler
+    image: acrsegueprod.azurecr.io/segue-tasks:7.5.0.20260409.1
+    env_file:
+      - stack.env
+    restart: always
+    depends_on:
+      - segue-postgres
+    command: "celery -A worker.celery_app beat -l info"
+    networks:
+      - segue-network
+
+  # Worker
+  segue-modulation-worker:
+    container_name: segue-modulation-worker
+    image: acrsegueprod.azurecr.io/segue-tasks:7.5.0.20260409.1
+    env_file:
+      - stack.env
+    restart: always
+    depends_on:
+      - segue-postgres
+      - segue-redis
+    command: "celery -A worker.celery_app worker"
+    networks:
+      - segue-network
+    volumes:
+      - certs:/app/certs
+
+  # OPC-UA Subscriber
+  segue-opcua-subscriber:
+    container_name: segue-opcua-subscriber
+    image: acrsegueprod.azurecr.io/segue-subscriber:7.5.0.20260409.1
+    env_file:
+      - stack.env      
+    restart: always
+    depends_on:
+      - segue-postgres
+      - segue-redis
+    command: sh -c "python main_opc_ua_subscriber.py"
+    volumes:
+      - certs:/app/certs
+    networks:
+      - segue-network
+      
+  # Frontend UI
+  segue-ui:
+    container_name: segue-ui
+    image: acrsegueprod.azurecr.io/segue-ui:7.5.1.20260515.2
+    restart: always
+    labels:
+      - traefik.http.routers.segue-ui.rule=Host("${IP}")
+      - traefik.http.services.segue-ui.loadbalancer.server.port=80
+      - traefik.enable=true
+    env_file:
+      - stack.env
+    ports:
+      - "6000:80"
+    depends_on:
+      - segue-api
+    networks:
+      - segue-network
+
+  segue-ot:
+    container_name: segue-ot
+    image: acrsegueprod.azurecr.io/segue-ui:7.5.1.20260515.2
+    restart: always
+    environment:
+      - API_BASE_URL=http://10.46.12.167:8009/api/v1/segue/
+      - CLIENT_BASE_ID='1a784f8d-9b8b-47ce-bab1-3b7e70e0307c'
+      - REDIRECT_BASE_URL=http://10.46.12.167:6001/home
+    ports:
+      - "6001:80"
+    depends_on:
+      - segue-api
+    networks:
+      - segue-network
+
+  # Reverse-proxy
+  segue-traefik:
+    container_name: segue-traefik
+    image: docker.ambevdevs.com.br/brewtech_automation/traefik/dev:20240819_294
+    restart: always
+    command:
+      - --log.level=DEBUG
+      - --api.insecure=true
+      - --providers.docker
+      - --providers.docker.exposedbydefault=false
+    ports:
+      - "4001:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - segue-network
+
+  # ====================================================================
+  # NOVO: Controlador de Velocidade V4 OPC
+  # ====================================================================
+  controlador-v4-opc:
+    container_name: controlador-v4-opc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: controlador-v4-opc:latest
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODO_SOMBRA=true       # Padrão seguro de fábrica
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    networks:
+      - segue-network
+
+volumes:
+  pg-data:
+  certs:
+  grafana-data:
+
+networks:
+  segue-network:
+    name: segue-network
+    driver: bridge

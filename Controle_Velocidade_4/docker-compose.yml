@@ -1,0 +1,26 @@
+# Docker Compose para o Controlador de Velocidade V4 OPC (Dentro de Controle_Velocidade_4)
+services:
+  controlador-v4-opc:
+    container_name: controlador-v4-opc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: controlador-v4-opc:latest
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODO_SOMBRA=true       # Padrão seguro: Apenas Leitura (sem escrita no CLP)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    networks:
+      - segue-network
+
+networks:
+  segue-network:
+    external:
+      name: segue-network
+
+
