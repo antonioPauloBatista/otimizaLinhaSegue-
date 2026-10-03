@@ -616,14 +616,15 @@ class ClienteOPCV4:
                 niveis = self.gerenciador_buffers.calcular_todos_os_niveis()
                 b1, b2, b3, b4 = niveis["b1"], niveis["b2"], niveis["b3"], niveis["b4"]
 
-                # 2. Obtém velocidades atuais das máquinas vizinhas
+                # 2. Obtém velocidades atuais das máquinas vizinhas e da enchedora
                 vin = self.estado.v_in
                 vout = self.estado.v_out
+                vatual = self.estado.v_atual
 
-                # 3. Invoca o algoritmo e modelo do Controlador V4
+                # 3. Invoca o algoritmo e modelo do Controlador V4 (incluindo Trava de Segurança do Sprint por v_atual)
                 vel_calculada, motivo_id = self.controlador.calcular_velocidade(
                     b1=b1, b2=b2, b3=b3, b4=b4,
-                    v_in=vin, v_out=vout,
+                    v_in=vin, v_out=vout, v_atual=vatual,
                     delta_t_s=self.ciclo_controle_s,
                     retornar_motivo=True,
                     timestamp=agora_str,

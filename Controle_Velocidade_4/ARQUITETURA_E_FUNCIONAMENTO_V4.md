@@ -176,16 +176,46 @@ No painel de acionamento elétrico da enchedora, os inversores de frequência (D
 
 ---
 
-## 7. Modo Sprint / Sobrevelocidade Condicionada ($101\% - 105\%$)
+## 7. Modo Sprint / Sobrevelocidade Condicionada (101% - 105%)
 
 Em momentos onde a linha está completamente desimpedida, a enchedora pode operar em sobremarcha controlada para recuperar volume de paradas anteriores.
 
-### Critérios Obrigatórios para o Sprint:
-1. $B_2 \ge b_{2\_opt} + 10\%$ (estoque de garrafas na entrada abundante);
-2. $B_3 \le b_{3\_opt} - 10\%$ (esteira de saída livre);
-3. $V_{\text{in}} \ge 90\% \cdot V_{\text{nom}}$ e $V_{\text{out}} \ge 90\% \cdot V_{\text{nom}}$ (máquinas vizinhas em pleno regime).
+### 7.1 Critérios Obrigatórios para Entrada em Sprint:
+1. **Buffer de Entrada Abundante:** `B2 >= b2_liga` (onde `b2_liga = b2_lim + margem_sprint_b2_liga`, ex: >= 38% a 45%);
+2. **Buffer de Saída Desimpedido:** `B3 <= b3_lim - 5%` (esteira de descarga com espaço livre garantido);
+3. **Máquina de Saída em Ritmo Compatível:** `V_out >= 85% * V_nom` (Pasteurizador puxando garrafas sem estrangulamento);
+4. **TRAVA MANDATÓRIA DE INTERTRAVAMENTO: Enchedora em Regime Nominal Pleno (`V_atual >= 98% * V_nom`)**.
 
-$$V_{\text{sprint}} = V_{\text{nominal}} \times \text{Fator\_Sprint} \quad (\text{ex: } 60.000 \times 1.01 = 60.600\text{ CPH})$$
+---
+
+### 7.2 Trava de Segurança Operacional: Intertravamento por Velocidade da Máquina
+
+> [!IMPORTANT]
+> **Regra Inegociável de Fábrica (Operação Real vs Nominal de Projeto):**  
+> Na fábrica, o CLP pode operar em percentual ou unidade de engenharia da máquina. Porém, o verdadeiro "100%" da operação é o valor ajustado pelo operador na IHM.  
+> Se houver qualquer restrição operacional, mecânica, desgaste em guias, problemas de rótulo, lubrificação deficiente ou risco de quebra de garrafas, a equipe de chão de fábrica pode deliberadamente rebaixar a velocidade na IHM (por exemplo, baixando 5% para rodar melhor a 95%).  
+> Sob essa condição, **o Sprint NUNCA deve ser acionado**, mesmo que todos os pulmões e buffers estejam 100% livres!
+
+#### Lógica da Trava Implementada no Controlador e no Otimizador:
+* **Bloqueio de Entrada no Sprint:**
+  `SE V_atual < 98% * V_nom -> SPRINT_BLOQUEADO (w_sprint = 0, V_alvo <= V_nom)`
+  * A tolerância de 2% (98% a 100%) permite absorver o ruído natural de tacômetros industriais em regime pleno sem falsos bloqueios.
+  * Se a velocidade medida estiver abaixo de 98% da nominal de projeto configurada (`config.json`), a máquina é considerada rebaixada pelo operador ou em rampa, e a sobremarcha permanece terminantemente desativada.
+* **Corte Imediato de Emergência / Processo:**
+  `SE Sprint_Ativo E (V_atual < 95% * V_nom OU V_out < 70% * V_nom OU B2 <= b2_lim OU B3 >= b3_lim) -> DESATIVA SPRINT IMEDIATAMENTE`
+  * Se o operador reduzir a velocidade durante o Sprint ou se ocorrer uma desaceleração mecânica inesperada, o algoritmo desarma o Sprint no mesmo ciclo.
+* **Defesa em Profundidade (Teto Limitador Rígido):**
+  `V_teto = V_nom SE trava_sprint_bloqueado SENAO V_sprint`  
+  `V_alvo = min(V_teto, V_alvo)`
+  * Garante que nenhuma ponderação fuzzy ultrapasse a velocidade nominal de projeto enquanto a máquina estiver rebaixada.
+
+---
+
+### 7.3 Histerese e Anti-Hunting do Sprint
+Para evitar oscilações constantes no motor da enchedora (*chattering*):
+* **Ativação:** Exige B2 >= b2_liga (ex: 38% a 45%);
+* **Retenção:** Permanece ativo até B2 cair abaixo de `b2_desliga = b2_lim + margem_sprint_b2_desliga` (ex: 33% a 35%);
+* **Anti-Hunting:** Uma vez desativado, o Sprint não religa até que B2 volte a subir acima de `b2_liga` e todos os intertravamentos sejam restabelecidos.
 
 ---
 

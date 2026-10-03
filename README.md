@@ -102,6 +102,7 @@ A pasta [`Controle_Velocidade_4/`](Controle_Velocidade_4/) contém a arquitetura
 * **Filtros Anti-Ruído em Software:** Mediana móvel (N=3), Debounce temporal e EWMA (alfa = 0.65).
 * **Balanço de Massa Feedforward:** Proteção preditiva antecipando variações com os 4 buffers (B1 a B4).
 * **Proteção Mecânica:** Slew Rate Limiter parametrizado por tempo em segundos (0 a 100% nominal).
+* **Intertravamento de Segurança Industrial:** Trava mandatória do modo Sprint que bloqueia sobremarcha se a enchedora estiver operando abaixo da nominal (respeito irrestrito ao setpoint setado pelo operador na IHM).
 * **Comunicação Direta OPC UA:** Leitura instantânea por *Subscription* e despacho de setpoints no CLP.
 * **Geração de Imagens e Gráficos:** Curva de convergência e gráficos diários comparativos de produção.
 * **Container Docker:** Imagem autocontida pronta para rodar no Docker Compose.

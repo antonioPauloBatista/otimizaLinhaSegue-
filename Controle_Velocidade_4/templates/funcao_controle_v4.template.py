@@ -253,9 +253,13 @@ class ControladorVelocidadeV4:
             lista.append(self.evento_atual)
         return lista
 
-    def calcular_velocidade(self, b1, b2, b3, b4, v_in=None, v_out=None, delta_t_s=30.0, retornar_motivo=True, timestamp=None, registrar_evento=False, arquivo_json=None):
+    def calcular_velocidade(self, b1, b2, b3, b4, v_in=None, v_out=None, v_atual=None, delta_t_s=30.0, retornar_motivo=True, timestamp=None, registrar_evento=False, arquivo_json=None):
         v_in = float(v_in) if v_in is not None else self.vel_nom
         v_out = float(v_out) if v_out is not None else self.vel_nom
+
+        # Referência de velocidade operacional da máquina (Enchedora):
+        # Se v_atual medido do CLP não for informado, adota o valor interno atual (self.v_atual)
+        v_maquina = float(v_atual) if v_atual is not None else float(self.v_atual)
 
         # 1. Filtro EWMA contínuo com Fast-Path / Bypass Dinâmico para B2
         delta_b2_raw = 0.0
@@ -318,11 +322,31 @@ class ControladorVelocidadeV4:
         b2_liga = min(60.0, max(38.0, self.b2_lim + self.margem_sprint_b2_liga))
         b2_desliga = max(28.0, self.b2_lim + self.margem_sprint_b2_desliga)
 
-        # Condição de entrada no Sprint (Buffer de entrada folgado, saída livre e pasteurizador em ritmo compatível):
-        cond_entrada_sprint = (self.b2_f >= b2_liga) and (self.b3_f <= (self.b3_lim - 5.0)) and (v_out >= 0.85 * v_nom)
+        # TRAVA DE SEGURANÇA OPERACIONAL: INTERTRAVAMENTO DE SPRINT POR VELOCIDADE DA ENCHEDORA
+        # Regra Inegociável de Fábrica:
+        # O "100%" da operação é definido pelo operador na IHM. Se a enchedora estiver rodando
+        # abaixo da velocidade nominal de projeto (ex.: operador rebaixou 5% na IHM por restrição
+        # mecânica, qualidade ou embalagem, ou a máquina está em rampa de aceleração), o Sprint
+        # é ESTRITAMENTE BLOQUEADO.
+        # Condição obrigatória: enchedora em regime nominal pleno (v_maquina >= 0.98 * v_nom).
+        trava_sprint_bloqueado = (v_maquina < 0.98 * v_nom)
+
+        # Condição de entrada no Sprint (Buffer de entrada folgado, saída livre, pasteurizador pleno e enchedora a 100% nominal):
+        cond_entrada_sprint = (
+            (self.b2_f >= b2_liga) and
+            (self.b3_f <= (self.b3_lim - 5.0)) and
+            (v_out >= 0.85 * v_nom) and
+            (not trava_sprint_bloqueado)
+        )
 
         # Condição crítica de desativação imediata (segurança de processo):
-        cond_corte_imediato = (self.b2_f <= self.b2_lim) or (self.b3_f >= self.b3_lim) or (v_out < 0.70 * v_nom)
+        # Desliga se buffers entrarem em zona de perigo, saída desacelerar ou enchedora cair abaixo de 95% nominal
+        cond_corte_imediato = (
+            (self.b2_f <= self.b2_lim) or
+            (self.b3_f >= self.b3_lim) or
+            (v_out < 0.70 * v_nom) or
+            (v_maquina < 0.95 * v_nom)
+        )
 
         if not self.sprint_ativo:
             if cond_entrada_sprint:
@@ -330,7 +354,12 @@ class ControladorVelocidadeV4:
                 self.tempo_em_sprint_s = 0.0
         else:
             self.tempo_em_sprint_s += float(delta_t_s)
-            cond_saida_histerese = (self.b2_f < b2_desliga) or (self.b3_f > (self.b3_lim - 5.0)) or (v_out < 0.85 * v_nom)
+            cond_saida_histerese = (
+                (self.b2_f < b2_desliga) or
+                (self.b3_f > (self.b3_lim - 5.0)) or
+                (v_out < 0.85 * v_nom) or
+                (v_maquina < 0.98 * v_nom)
+            )
             if cond_corte_imediato or cond_saida_histerese:
                 self.sprint_ativo = False
                 self.tempo_em_sprint_s = 0.0
@@ -341,7 +370,8 @@ class ControladorVelocidadeV4:
         num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (w_ff_b4 * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
         den = b2_baixo + w_saida_cheia + w_retomada + b1_alerta + w_ff_b4 + w_normal + w_sprint
         v_alvo = v_nom if den == 0 else num / den
-        v_alvo = max(v_reduz, min(v_sprint, v_alvo))
+        v_teto_sprint = v_nom if trava_sprint_bloqueado else v_sprint
+        v_alvo = max(v_reduz, min(v_teto_sprint, v_alvo))
 
         # 4. Limitador de Rampa Mecânica (Slew Rate) com Banda Morta na Entrada (sem congelamento assintótico)
         v_ant = self.v_atual

@@ -55,6 +55,14 @@ A taxa de aceleração e desaceleração é ajustada de forma física e direta e
 
 ---
 
+### 1.5 Trava de Segurança do Sprint por Velocidade Real da Enchedora
+* **Regra de Processo Inegociável:** O verdadeiro 100% da fábrica é definido pelo operador na IHM. Se a enchedora estiver operando abaixo da velocidade nominal de projeto (ex.: operador rebaixou 5% na IHM por restrição mecânica, operacional, de embalagem ou lubrificação), o Sprint (sobrevelocidade) é **terminantemente bloqueado**.
+* **Intertravamento:** A sobremarcha só é autorizada se `V_atual >= 98% * V_nom` (máquina em regime nominal pleno).
+* **Corte Imediato:** Se a enchedora estiver em Sprint e a velocidade medida cair abaixo de 95% da nominal, o Sprint é desarmado instantaneamente no mesmo ciclo.
+* **Defesa em Profundidade:** Tanto o controlador de tempo real (`funcao_controle_v4.py`) quanto o simulador do gêmeo digital (`otimizador_velocidade_v4.py`) aplicam a trava diretamente.
+
+---
+
 ## 🛠️ 2. Guia de Configuração e Execução do Otimizador
 
 O processo de otimização calibra os limiares matemáticos e as rampas mecânicas a partir do histórico real da sua linha.

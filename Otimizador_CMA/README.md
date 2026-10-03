@@ -121,13 +121,30 @@ Ao concluir a convergência, o script gera automaticamente:
 
 Os parâmetros encontrados pelo otimizador traduzem-se diretamente em lógicas de blocos de controle no CLP:
 
-* **Faixa Segura (100% Nominal - 94.500 CPH):**
-  * Nível de entrada B2 > 51.6% E Nível de saída B3 < 50.4%.
-* **Modulação Preventiva por Falta (95% - 89.775 CPH):**
-  * Iniciar redução quando B2 < 41.6%.
-  * Retornar para 100% quando B2 > 51.6% (histerese de 10% para evitar oscilação de motor).
-* **Modulação Preventiva por Acúmulo (95% - 89.775 CPH):**
-  * Iniciar redução quando B3 > 60.4%.
-  * Retornar para 100% quando B3 < 50.4% (histerese de 10%).
-* **Intertravamento Rígido de Parada de Emergência (0 CPH):**
-  * Desarme físico se B2 <= 10.0% (esteira seca) ou B3 >= 85.0% (risco mecânico de choque).
+* **Faixa Segura (100% Nominal):**
+  * Todos os pulmões dentro da faixa segura (sem ativação preventiva).
+* **Histerese Padronizada em 5.0% (Anti-Travamento):**
+  * Elimina o travamento de estado booleano em esteiras cheias (como 68% no PZ-EPC).
+  * Gatilho de Clear é sempre `Gatilho - 5.0%` (acúmulo) e `Gatilho + 5.0%` (falta).
+
+---
+
+## 8. Blindagem Contra Regressão e Detecção Automática de Limites
+
+Para garantir que futuras alterações no código nunca reintroduzam limites estáticos ou distorções de histerese, o sistema conta com uma **arquitetura de proteção em três camadas**:
+
+1. **Detecção Automática Orientada a Falhas (`calcular_limites_busca_automaticos`):**
+   * O espaço de busca `bounds_lo` e `bounds_hi` não é fixado na mão: ele é calculado dinamicamente escaneando as paradas reais (`velocidade == 0 CPH`) e o regime de operação contínua do CSV.
+   * Para os pulmões de saída (B3 e B4), o limite inferior de busca é mantido estritamente acima do regime de trabalho contínuo, impedindo que o algoritmo sugira cortes em faixas normais (como 65% ou 68%).
+2. **Trava em Tempo de Execução (*Fail-Safe Industrial* no Código):**
+   * Dentro de `otimizador_cma_es_free.py`, há verificações ativas que interrompem a execução com erro crítico caso `bounds_lo[6] < 70.0%` ou `Histerese > 8.0%`.
+3. **Suíte de Testes Unitários Automatizados (`test_limites_automaticos.py`):**
+   * Testes contínuos com `unittest` validando:
+     * Cálculo dinâmico em datasets reais e sintéticos.
+     * Prova matemática de que em 68% a enchedora roda livre a 100%.
+     * Tolerância a ausência de paradas e buffers opcionais.
+   * Executar os testes:
+     ```bash
+     python3 -m unittest Otimizador_CMA/test_limites_automaticos.py -v
+     ```
+

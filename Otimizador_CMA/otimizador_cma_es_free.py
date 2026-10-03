@@ -1,254 +1,173 @@
 import pandas as pd
 import numpy as np
 import os
-
 import json
 import sys
 
 # =====================================================================
-# 1. CONFIGURAÇÃO DOS ARQUIVOS E COLUNAS
+# 1. FUNÇÕES MODULARES E DETECÇÃO AUTOMÁTICA DE LIMITES
 # =====================================================================
-ARQUIVO_CSV = "dados_completos_fabrica.csv"
-ARQUIVO_CONFIG = sys.argv[1] if len(sys.argv) > 1 else "config_colunas.json"
 
-# Valores padrão de fallback
-COL_B1_DPL_UIP = "accumulation_percentage_DPL_UIP_null"  # Extremo Entrada (%)
-COL_B2_UIP_ECH = "accumulation_percentage_UIP_ECH_null"  # Interno Entrada (%)
-COL_B3_ECH_PZ  = "accumulation_percentage_ECH_PZ_null"   # Interno Saída (%)
-COL_B4_PZ_EPC  = "accumulation_percentage_PZ_EPC_null"   # Extremo Saída (%)
-
-COL_V_DPL = "speed_actual_cph_null_first_upstream_machine_1"
-COL_V_UIP = "speed_actual_cph_null_eci_1"
-COL_V_ECH = "speed_actual_cph_null_filler_1"       # Enchedora (Coração da Linha)
-COL_V_ROT = "speed_actual_cph_null_pasteurizer"
-COL_V_EPC = "speed_actual_cph_null_first_downstream_machine_3"
-
-LIMITE_PARADA_FALTA = None
-LIMITE_PARADA_ACUMULO = None
-
-if os.path.exists(ARQUIVO_CONFIG):
-    try:
-        with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-            ARQUIVO_CSV = cfg.get("Arquivo_Dados", ARQUIVO_CSV)
-            COL_B1_DPL_UIP = cfg.get("Col_Buffer_Antes_Entrada", COL_B1_DPL_UIP)
-            COL_B2_UIP_ECH = cfg.get("Col_Buffer_Entrada", COL_B2_UIP_ECH)
-            COL_B3_ECH_PZ  = cfg.get("Col_Buffer_Saida", COL_B3_ECH_PZ)
-            COL_B4_PZ_EPC  = cfg.get("Col_Buffer_Pos_Saida", COL_B4_PZ_EPC)
-            
-            COL_V_DPL = cfg.get("COL_V_Antes_Entrada", COL_V_DPL)
-            COL_V_UIP = cfg.get("COL_V_Entrada", COL_V_UIP)
-            COL_V_ECH = cfg.get("COL_V_ECH", COL_V_ECH)
-            COL_V_ROT = cfg.get("COL_V_Saida", COL_V_ROT)
-            COL_V_EPC = cfg.get("COL_V_Entrada_Pos_Saida", COL_V_EPC)
-            
-            VELOCIDADE_NOMINAL_CONFIG = cfg.get("Velocidade_Nominal_ECH", cfg.get("Velocidade_Nominal", None))
-            FILTRO_MINUTOS_PARADA_LONGA_CONFIG = cfg.get("Filtro_Minutos_Parada_Longa", None)
-            FATOR_SOBREMARCHA_CONFIG = cfg.get("Fator_Sobremarcha", 1.0)
-            LIMITE_PARADA_FALTA = cfg.get("Limite_Parada_Falta", None)
-            LIMITE_PARADA_ACUMULO = cfg.get("Limite_Parada_Acumulo", None)
-        print(f"➔ Configuração de colunas carregada de '{ARQUIVO_CONFIG}'.")
-    except Exception as e:
-        print(f"⚠️ Erro ao ler '{ARQUIVO_CONFIG}': {e}. Usando padrões.")
-
-VELOCIDADE_NOMINAL_ECH = 52700.0
-FATOR_SOBREMARCHA = 1.0
-FILTRO_MINUTOS_PARADA_LONGA = 10
-CAPACIDADE_ESTEIRAS_INTERNAS = 500
-CAPACIDADE_ESTEIRAS_EXTREMAS = 1000
-
-SALVAR_CSV_COMPARATIVO = True
-GERAR_GRAFICO_PLOTS    = True
-
-# =====================================================================
-# 2. GERADOR DE MASSA DE DADOS (teste sem CSV real)
-# =====================================================================
-if not os.path.exists(ARQUIVO_CSV):
-    print(f"Arquivo '{ARQUIVO_CSV}' não encontrado. Gerando dados simulados...")
-    linhas = 3600
-    time_idx = pd.date_range(start="2026-05-29 10:00:00", periods=linhas, freq="s")
-    v_epc = [52700] * linhas
-    for i in range(600, 1200): v_epc[i] = 0
-    v_rot = [52700] * linhas
-    for i in range(700, 1200): v_rot[i] = 15000
-
-    gen_b1 = COL_B1_DPL_UIP if COL_B1_DPL_UIP else "accumulation_percentage_DPL_UIP_null"
-    gen_b2 = COL_B2_UIP_ECH if COL_B2_UIP_ECH else "accumulation_percentage_UIP_ECH_null"
-    gen_b3 = COL_B3_ECH_PZ  if COL_B3_ECH_PZ  else "accumulation_percentage_ECH_PZ_null"
-    gen_b4 = COL_B4_PZ_EPC  if COL_B4_PZ_EPC  else "accumulation_percentage_PZ_EPC_null"
-    gen_v_dpl = COL_V_DPL if COL_V_DPL else "speed_actual_cph_null_first_upstream_machine_1"
-    gen_v_uip = COL_V_UIP if COL_V_UIP else "speed_actual_cph_null_eci_1"
-    gen_v_ech = COL_V_ECH if COL_V_ECH else "speed_actual_cph_null_filler_1"
-    gen_v_rot = COL_V_ROT if COL_V_ROT else "speed_actual_cph_null_pasteurizer"
-    gen_v_epc = COL_V_EPC if COL_V_EPC else "speed_actual_cph_null_first_downstream_machine_3"
-
-    df_fake = pd.DataFrame({
-        "Timestamp": time_idx,
-        gen_b1: np.random.uniform(50, 60, linhas),
-        gen_b2: np.random.uniform(45, 55, linhas),
-        gen_b3:  np.linspace(40, 95, linhas),
-        gen_b4:  np.linspace(50, 100, linhas),
-        gen_v_dpl: [70400] * linhas,
-        gen_v_uip: [52700] * linhas,
-        gen_v_ech: [52700] * linhas,
-        gen_v_rot: v_rot,
-        gen_v_epc: v_epc
-    })
-    df_fake.to_csv(ARQUIVO_CSV, index=False)
-
-df = pd.read_csv(ARQUIVO_CSV)
-
-# Função para resolver coluna com nome EXATO
-def resolver_coluna(col_config, col_padrao, opcional=False):
+def resolver_coluna(df, col_config, col_padrao, opcional=False):
+    """Localiza uma coluna no DataFrame com base na configuração ou padrão de fallback."""
     if not col_config or str(col_config).strip().lower() in ["null", "none", ""]:
         if opcional:
             return None
-        col_config = col_padrao  # Se for obrigatória, tenta o fallback
-    
-    # Procura exata na configuração
+        col_config = col_padrao
+
     if col_config in df.columns:
         return col_config
-            
-    # Procura exata no padrão de fallback
+
     if col_padrao in df.columns:
         return col_padrao
-            
+
     if opcional:
         return None
-    raise ValueError(f"Coluna exata '{col_config}' não encontrada no CSV. Verifique o arquivo 'config_colunas.json'.")
-
-# Resolução de todas as colunas
-COL_B1_DPL_UIP = resolver_coluna(COL_B1_DPL_UIP, "accumulation_percentage_DPL_UIP_null", opcional=True)
-COL_B2_UIP_ECH = resolver_coluna(COL_B2_UIP_ECH, "accumulation_percentage_UIP_ECH_null")
-COL_B3_ECH_PZ  = resolver_coluna(COL_B3_ECH_PZ, "accumulation_percentage_ECH_PZ_null")
-COL_B4_PZ_EPC  = resolver_coluna(COL_B4_PZ_EPC, "accumulation_percentage_PZ_EPC_null", opcional=True)
-
-COL_V_DPL = resolver_coluna(COL_V_DPL, "speed_actual_cph_null_first_upstream_machine_1", opcional=True)
-COL_V_UIP = resolver_coluna(COL_V_UIP, "speed_actual_cph_null_eci_1")
-COL_V_ECH = resolver_coluna(COL_V_ECH, "speed_actual_cph_null_filler_1")
-COL_V_ROT = resolver_coluna(COL_V_ROT, "speed_actual_cph_null_pasteurizer")
-COL_V_EPC = resolver_coluna(COL_V_EPC, "speed_actual_cph_null_first_downstream_machine_3", opcional=True)
-
-HAS_B1 = COL_B1_DPL_UIP is not None
-HAS_V_DPL = COL_V_DPL is not None
-HAS_B4 = COL_B4_PZ_EPC is not None
-HAS_V_EPC = COL_V_EPC is not None
-
-ativo_b1 = "ATIVO" if HAS_B1 else "INATIVO"
-ativo_b4 = "ATIVO" if HAS_B4 else "INATIVO"
-print(f"➔ Configuração dos pulmões de extremidade: B1 (Antes Entrada) = {ativo_b1} | B4 (Pós Saída) = {ativo_b4}")
-
-df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-
-# FIX: Preencher NaNs oriundos do outer join do Grafana para não quebrar a simulação
-df.ffill(inplace=True)
-df.fillna(0.0, inplace=True)
-
-# Detectar automaticamente os limites físicos de parada caso não estejam no arquivo JSON
-if LIMITE_PARADA_FALTA is None or LIMITE_PARADA_ACUMULO is None:
-    v_ech_temp = df[COL_V_ECH].values
-    b2_temp = df[COL_B2_UIP_ECH].values
-    b3_temp = df[COL_B3_ECH_PZ].values
-    paradas_idx = (v_ech_temp == 0.0)
-    
-    auto_falta = 15.0
-    auto_acumulo = 85.0
-    if paradas_idx.sum() > 0:
-        b2_parado = b2_temp[paradas_idx]
-        b3_parado = b3_temp[paradas_idx]
-        p15_b2 = np.percentile(b2_parado, 15)
-        auto_falta = float(np.clip(p15_b2, 10.0, 25.0))
-        p85_b3 = np.percentile(b3_parado, 85)
-        auto_acumulo = float(np.clip(p85_b3, 75.0, 90.0))
-        
-    if LIMITE_PARADA_FALTA is None:
-        LIMITE_PARADA_FALTA = round(auto_falta, 1)
-    if LIMITE_PARADA_ACUMULO is None:
-        LIMITE_PARADA_ACUMULO = round(auto_acumulo, 1)
-        
-    print(f"➔ Limites de parada física calculados automaticamente: Falta <= {LIMITE_PARADA_FALTA}% | Acúmulo >= {LIMITE_PARADA_ACUMULO}%")
-    
-    if os.path.exists(ARQUIVO_CONFIG):
-        try:
-            with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
-                config_data = json.load(f)
-            config_data["Limite_Parada_Falta"] = LIMITE_PARADA_FALTA
-            config_data["Limite_Parada_Acumulo"] = LIMITE_PARADA_ACUMULO
-            with open(ARQUIVO_CONFIG, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2, ensure_ascii=False)
-            print(f"➔ Arquivo '{ARQUIVO_CONFIG}' atualizado com os novos limites automáticos.")
-        except Exception as e:
-            print(f"⚠️ Erro ao atualizar '{ARQUIVO_CONFIG}': {e}")
+    raise ValueError(f"Coluna exata '{col_config}' não encontrada no CSV. Verifique o arquivo de configuração.")
 
 
-if len(df) > 1:
-    time_step_seconds = int((df["Timestamp"].iloc[1] - df["Timestamp"].iloc[0]).total_seconds())
-    if time_step_seconds <= 0:
-        time_step_seconds = 1
-else:
-    time_step_seconds = 1
+def calcular_limites_busca_automaticos(
+    df,
+    col_v_ech,
+    col_b2,
+    col_b3,
+    col_b1=None,
+    col_b4=None,
+    vel_nominal=52000.0,
+    histerese=5.0
+):
+    """
+    Analisa estatisticamente o histórico da fábrica para calcular as fronteiras
+    reais de falha (quando a enchedora parou por falta ou acúmulo) e o regime
+    de operação contínua.
 
-print(f"➔ Intervalo de amostragem detectado: {time_step_seconds} segundos.")
+    Retorna:
+        bounds_lo: np.ndarray de 8 elementos
+        bounds_hi: np.ndarray de 8 elementos
+        info_diagnostico: dict com limites de falha e percentis
+    """
+    v = df[col_v_ech].values
+    mask_paradas = (v == 0.0)
+    mask_rodando = (v >= 0.5 * vel_nominal)
 
-v_ech_real_hist = df[COL_V_ECH].values
+    total_paradas = int(mask_paradas.sum())
 
-# FIX: Calcular a Velocidade Nominal Dinamicamente (P90 das velocidades ativas)
-# Isso corrige a diferença de escala de velocidade entre diferentes fábricas/bancos
-if 'VELOCIDADE_NOMINAL_CONFIG' in locals() and VELOCIDADE_NOMINAL_CONFIG is not None and VELOCIDADE_NOMINAL_CONFIG > 0:
-    VELOCIDADE_NOMINAL_ECH = float(VELOCIDADE_NOMINAL_CONFIG)
-    print(f"➔ Velocidade Nominal ECH definida pelo usuário: {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
-else:
-    vels_ativas = v_ech_real_hist[v_ech_real_hist > 1000]
-    if len(vels_ativas) > 0:
-        VELOCIDADE_NOMINAL_ECH = float(np.percentile(vels_ativas, 90))
-        print(f"➔ Velocidade Nominal ECH calculada dinamicamente (p90): {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
-        print(f"⚠ Não foram encontradas velocidades válidas. Mantendo nominal em {VELOCIDADE_NOMINAL_ECH:.0f} CPH")
+    # Fallback robusto caso não haja paradas no histórico
+    if total_paradas == 0:
+        bounds_lo = np.array([25.0, 80.0, 30.0, 80.0, 70.0, 85.0, 74.0, 85.0])
+        bounds_hi = np.array([45.0, 95.0, 48.0, 95.0, 82.0, 95.0, 85.0, 95.0])
+        info = {
+            "total_paradas": 0,
+            "limite_falta_b1": 35.0,
+            "limite_falta_b2": 40.0,
+            "limite_acumulo_b3": 85.0,
+            "limite_acumulo_b4": 80.0,
+            "histerese": float(histerese)
+        }
+        return bounds_lo, bounds_hi, info
 
-if 'FILTRO_MINUTOS_PARADA_LONGA_CONFIG' in locals() and FILTRO_MINUTOS_PARADA_LONGA_CONFIG is not None:
-    FILTRO_MINUTOS_PARADA_LONGA = int(FILTRO_MINUTOS_PARADA_LONGA_CONFIG)
+    # 2. B2 (Entrada UIP-ECH: Falta)
+    b2_rodando = df.loc[mask_rodando, col_b2].dropna() if col_b2 in df.columns else pd.Series([], dtype=float)
+    b2_parado = df.loc[mask_paradas, col_b2].dropna() if col_b2 in df.columns else pd.Series([], dtype=float)
+    med_b2_rodando = float(np.percentile(b2_rodando, 50)) if len(b2_rodando) else 65.0
 
-if 'FATOR_SOBREMARCHA_CONFIG' in locals() and FATOR_SOBREMARCHA_CONFIG is not None:
-    FATOR_SOBREMARCHA = float(FATOR_SOBREMARCHA_CONFIG)
-    if FATOR_SOBREMARCHA > 1.0:
-        print(f"➔ Fator de Sobremarcha detectado: {FATOR_SOBREMARCHA} ({(FATOR_SOBREMARCHA*100):.1f}%)")
-
-b2_hist = df[COL_B2_UIP_ECH].values
-b3_hist = df[COL_B3_ECH_PZ].values
-
-hist_stops_total    = int((v_ech_real_hist == 0.0).sum())
-hist_stops_buffer   = int(((v_ech_real_hist == 0.0) & ((b2_hist <= LIMITE_PARADA_FALTA) | (b3_hist >= LIMITE_PARADA_ACUMULO))).sum())
-hist_stops_external = hist_stops_total - hist_stops_buffer
-
-# FIX: Identificar paradas externas longas inegociáveis (> FILTRO_MINUTOS_PARADA_LONGA)
-limite_amostras_parada = int((FILTRO_MINUTOS_PARADA_LONGA * 60) / time_step_seconds)
-is_zero = (v_ech_real_hist == 0.0)
-mascara_parada_longa = np.zeros(len(df), dtype=bool)
-contador_parada = 0
-inicio_parada = -1
-
-for i in range(len(df)):
-    if is_zero[i]:
-        if contador_parada == 0:
-            inicio_parada = i
-        contador_parada += 1
+    paradas_falta_b2 = b2_parado[b2_parado < med_b2_rodando]
+    if len(paradas_falta_b2) > 0:
+        p_falta_b2 = float(np.percentile(paradas_falta_b2, 25))
     else:
-        if contador_parada > limite_amostras_parada:
-            mascara_parada_longa[inicio_parada:i] = True
-        contador_parada = 0
-if contador_parada > limite_amostras_parada:
-    mascara_parada_longa[inicio_parada:] = True
+        p_falta_b2 = float(np.percentile(b2_parado, 15)) if len(b2_parado) else 35.0
 
-print(f"➔ Filtro Parada Longa: {FILTRO_MINUTOS_PARADA_LONGA}min ({limite_amostras_parada} amostras). {mascara_parada_longa.sum()} amostras marcadas como inegociáveis.")
+    limite_falta_b2 = float(np.clip(p_falta_b2, 25.0, 50.0))
+    b2_lo = max(25.0, limite_falta_b2 - 8.0)
+    b2_hi = min(50.0, max(b2_lo + 8.0, limite_falta_b2 + 8.0))
 
-# =====================================================================
-# 3. MAPEAMENTO VETOR → DICIONÁRIO DE PARÂMETROS
-# Limites mais conservadores baseados na configuração original (B1~43%, B2~24%, B3~77%, B4~71%)
-BOUNDS_LO = np.array([ 20.0, 70.0, 15.0, 50.0, 60.0, 50.0, 50.0, 70.0])
-BOUNDS_HI = np.array([ 55.0, 95.0, 45.0, 95.0, 85.0, 95.0, 80.0, 95.0])
+    # 3. B1 (Antes Entrada DPL-UIP: Falta, se ativo)
+    if col_b1 and col_b1 in df.columns:
+        b1_rodando = df.loc[mask_rodando, col_b1].dropna()
+        b1_parado = df.loc[mask_paradas, col_b1].dropna()
+        med_b1_rodando = float(np.percentile(b1_rodando, 50)) if len(b1_rodando) else 60.0
+        paradas_falta_b1 = b1_parado[b1_parado < med_b1_rodando]
+        if len(paradas_falta_b1) > 0:
+            p_falta_b1 = float(np.percentile(paradas_falta_b1, 25))
+        else:
+            p_falta_b1 = float(np.percentile(b1_parado, 15)) if len(b1_parado) else 35.0
+        limite_falta_b1 = float(np.clip(p_falta_b1, 20.0, 48.0))
+        b1_lo = max(20.0, limite_falta_b1 - 8.0)
+        b1_hi = min(48.0, max(b1_lo + 8.0, limite_falta_b1 + 8.0))
+    else:
+        limite_falta_b1 = 30.0
+        b1_lo = 25.0
+        b1_hi = 45.0
 
-def vetor_para_params(x):
+    # 4. B3 (Saída Interna ECH-PZ: Acúmulo)
+    b3_rodando = df.loc[mask_rodando, col_b3].dropna() if col_b3 in df.columns else pd.Series([], dtype=float)
+    b3_parado = df.loc[mask_paradas, col_b3].dropna() if col_b3 in df.columns else pd.Series([], dtype=float)
+    p75_b3_rodando = float(np.percentile(b3_rodando, 75)) if len(b3_rodando) else 70.0
+    med_b3_rodando = float(np.percentile(b3_rodando, 50)) if len(b3_rodando) else 55.0
+
+    paradas_acumulo_b3 = b3_parado[b3_parado > med_b3_rodando]
+    if len(paradas_acumulo_b3) > 0:
+        p_acumulo_b3 = float(np.percentile(paradas_acumulo_b3, 85))
+    else:
+        p_acumulo_b3 = float(np.percentile(b3_parado, 85)) if len(b3_parado) else 85.0
+
+    limite_acumulo_b3 = float(np.clip(p_acumulo_b3, 75.0, 95.0))
+    b3_lo = max(70.0, min(p75_b3_rodando, limite_acumulo_b3 - 8.0))
+    b3_hi = min(88.0, max(b3_lo + 8.0, limite_acumulo_b3))
+
+    # 5. B4 (Pós Saída PZ-EPC: Acúmulo, se ativo)
+    if col_b4 and col_b4 in df.columns:
+        b4_rodando = df.loc[mask_rodando, col_b4].dropna()
+        b4_parado = df.loc[mask_paradas, col_b4].dropna()
+        p90_b4_rodando = float(np.percentile(b4_rodando, 90)) if len(b4_rodando) else 68.0
+        med_b4_rodando = float(np.percentile(b4_rodando, 50)) if len(b4_rodando) else 55.0
+
+        paradas_acumulo_b4 = b4_parado[b4_parado > med_b4_rodando]
+        if len(paradas_acumulo_b4) > 0:
+            p_acumulo_b4 = float(np.percentile(paradas_acumulo_b4, 85))
+        else:
+            p_acumulo_b4 = float(np.percentile(b4_parado, 85)) if len(b4_parado) else 78.0
+
+        limite_acumulo_b4 = float(np.clip(p_acumulo_b4, 75.0, 90.0))
+        # O limite inferior de busca deve ficar estritamente acima do regime normal (p90 rodando)
+        # para que o otimizador NUNCA recomende 65% em esteiras que operam normalmente a 68%
+        b4_lo = max(72.0, min(p90_b4_rodando + 1.0, limite_acumulo_b4 - 5.0))
+        b4_hi = min(86.0, max(b4_lo + 8.0, limite_acumulo_b4 + 4.0))
+    else:
+        limite_acumulo_b4 = 78.0
+        b4_lo = 74.0
+        b4_hi = 85.0
+
+    # 6. Montagem dos limites do vetor (8 parâmetros)
+    bounds_lo = np.array([
+        b1_lo,  80.0,   # B1 Falta, Vel B1
+        b2_lo,  80.0,   # B2 Falta, Vel B2
+        b3_lo,  85.0,   # B3 Acúmulo, Vel B3
+        b4_lo,  85.0    # B4 Acúmulo, Vel B4
+    ])
+
+    bounds_hi = np.array([
+        b1_hi,  95.0,   # B1 Falta, Vel B1
+        b2_hi,  95.0,   # B2 Falta, Vel B2
+        b3_hi,  95.0,   # B3 Acúmulo, Vel B3
+        b4_hi,  95.0    # B4 Acúmulo, Vel B4
+    ])
+
+    info = {
+        "total_paradas": total_paradas,
+        "limite_falta_b1": limite_falta_b1,
+        "limite_falta_b2": limite_falta_b2,
+        "limite_acumulo_b3": limite_acumulo_b3,
+        "limite_acumulo_b4": limite_acumulo_b4,
+        "histerese": float(histerese)
+    }
+
+    return bounds_lo, bounds_hi, info
+
+
+def vetor_para_params(x, bounds_lo, bounds_hi):
     """Clipa e converte vetor numérico em dicionário de parâmetros."""
-    x = np.clip(x, BOUNDS_LO, BOUNDS_HI)
+    x = np.clip(x, bounds_lo, bounds_hi)
     return {
         "gatilho_b1_falta_extrema":   x[0],
         "vel_ech_falta_extrema":       x[1],
@@ -260,54 +179,66 @@ def vetor_para_params(x):
         "vel_ech_acumulo_extremo":    x[7],
     }
 
-# =====================================================================
-# 4. MOTOR DO GÊMEO DIGITAL
-# =====================================================================
-def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, retornar_series=False):
-    b2 = dados_df[COL_B2_UIP_ECH].values
-    b3 = dados_df[COL_B3_ECH_PZ].values
-    v_rot     = dados_df[COL_V_ROT].values
-    v_ech_real = dados_df[COL_V_ECH].values
-    
-    b1 = dados_df[COL_B1_DPL_UIP].values if HAS_B1 else None
-    v_dpl = dados_df[COL_V_DPL].values if HAS_V_DPL else None
-    
-    b4 = dados_df[COL_B4_PZ_EPC].values if HAS_B4 else None
-    v_epc = dados_df[COL_V_EPC].values if HAS_V_EPC else None
 
-    producao_total_simulada   = 0.0
-    paradas_soco_evitadas     = 0
+def simular_historico_com_regras_ia(
+    dados_df, p, time_step, mascara_parada,
+    col_b2, col_b3, col_v_ech, col_v_rot,
+    col_b1=None, col_v_dpl=None,
+    col_b4=None, col_v_epc=None,
+    vel_nominal_ech=52000.0,
+    fator_sobremarcha=1.0,
+    limite_parada_falta=25.0,
+    limite_parada_acumulo=75.0,
+    histerese=5.0,
+    retornar_series=False
+):
+    b2 = dados_df[col_b2].values
+    b3 = dados_df[col_b3].values
+    v_rot = dados_df[col_v_rot].values
+    v_ech_real = dados_df[col_v_ech].values
+
+    has_b1 = col_b1 is not None and col_b1 in dados_df.columns
+    has_v_dpl = col_v_dpl is not None and col_v_dpl in dados_df.columns
+    b1 = dados_df[col_b1].values if has_b1 else None
+    v_dpl = dados_df[col_v_dpl].values if has_v_dpl else None
+
+    has_b4 = col_b4 is not None and col_b4 in dados_df.columns
+    b4 = dados_df[col_b4].values if has_b4 else None
+
+    producao_total_simulada = 0.0
+    paradas_soco_evitadas = 0
     paradas_soco_reais_ocorridas = 0
-    paradas_externas_ocorridas   = 0
-    mudancas_velocidade       = 0
-    ultima_velocidade_fator   = 1.0
+    paradas_externas_ocorridas = 0
+    mudancas_velocidade = 0
+    ultima_velocidade_fator = 1.0
 
     b1_ativo = b2_ativo = b3_ativo = b4_ativo = False
     velocidades_simuladas = []
 
     for i in range(len(dados_df)):
+        # Avaliação com histerese padronizada (5.0%)
         if b2[i] <= p["gatilho_b2_falta_critica"]:
             b2_ativo = True
-        elif b2[i] > p["gatilho_b2_falta_critica"] + 10.0:
+        elif b2[i] > p["gatilho_b2_falta_critica"] + histerese:
             b2_ativo = False
 
         if b3[i] >= p["gatilho_b3_acumulo_critico"]:
             b3_ativo = True
-        elif b3[i] < p["gatilho_b3_acumulo_critico"] - 10.0:
+        elif b3[i] < p["gatilho_b3_acumulo_critico"] - histerese:
             b3_ativo = False
 
-        if HAS_B4 and b4 is not None:
+        if has_b4 and b4 is not None:
             if b4[i] >= p["gatilho_b4_acumulo_extremo"]:
                 b4_ativo = True
-            elif b4[i] < p["gatilho_b4_acumulo_extremo"] - 15.0:
+            elif b4[i] < p["gatilho_b4_acumulo_extremo"] - histerese:
                 b4_ativo = False
         else:
             b4_ativo = False
 
-        if HAS_B1 and b1 is not None:
+        if has_b1 and b1 is not None:
             if b1[i] <= p["gatilho_b1_falta_extrema"]:
                 b1_ativo = True
-            elif b1[i] > p["gatilho_b1_falta_extrema"] + 10.0:
+            elif b1[i] > p["gatilho_b1_falta_extrema"] + histerese:
                 b1_ativo = False
         else:
             b1_ativo = False
@@ -316,72 +247,66 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
             # Parada externa inegociável (quebra mecânica longa)
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
-        elif v_ech_real[i] == 0.0 and (b2[i] <= LIMITE_PARADA_FALTA or b3[i] >= LIMITE_PARADA_ACUMULO):
-            # Modulação agressiva até 95% permitida para absorver micro-paradas sem despencar a velocidade
-            if b2[i] <= LIMITE_PARADA_FALTA and b2_ativo:
+        elif v_ech_real[i] == 0.0 and (b2[i] <= limite_parada_falta or b3[i] >= limite_parada_acumulo):
+            # Modulação para absorver micro-paradas sem derrubar a linha
+            if b2[i] <= limite_parada_falta and b2_ativo:
                 if p["vel_ech_falta_critica"] <= 95.0:
                     fator_velocidade = p["vel_ech_falta_critica"] / 100.0
                 else:
                     fator_velocidade = 0.0
                     paradas_soco_reais_ocorridas += 1
-                    
-            elif b3[i] >= LIMITE_PARADA_ACUMULO and b3_ativo:
+            elif b3[i] >= limite_parada_acumulo and b3_ativo:
                 if p["vel_ech_acumulo_critico"] <= 95.0:
                     fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
                 else:
                     fator_velocidade = 0.0
                     paradas_soco_reais_ocorridas += 1
             else:
-                # Não evitou: o nível de buffer estourou e o otimizador não agiu a tempo
                 fator_velocidade = 0.0
                 paradas_soco_reais_ocorridas += 1
         elif v_ech_real[i] == 0.0:
-            # Parada externa (mecânica/operador): preservada integralmente
+            # Parada externa preservada integralmente
             fator_velocidade = 0.0
             paradas_externas_ocorridas += 1
         else:
             # Máquina rodando no histórico:
-            # Se as regras estiverem ativas, a velocidade da enchedora é reduzida para proteger os buffers.
             if b2_ativo:
                 fator_velocidade = p["vel_ech_falta_critica"] / 100.0
             elif b3_ativo:
                 fator_velocidade = p["vel_ech_acumulo_critico"] / 100.0
-            elif HAS_B4 and b4_ativo and v_rot[i] < VELOCIDADE_NOMINAL_ECH:
+            elif has_b4 and b4_ativo and v_rot[i] < vel_nominal_ech:
                 fator_velocidade = p["vel_ech_acumulo_extremo"] / 100.0
                 paradas_soco_evitadas += 1
-            elif HAS_B1 and HAS_V_DPL and b1_ativo and v_dpl[i] < VELOCIDADE_NOMINAL_ECH:
+            elif has_b1 and has_v_dpl and b1_ativo and v_dpl[i] < vel_nominal_ech:
                 fator_velocidade = p["vel_ech_falta_extrema"] / 100.0
                 paradas_soco_evitadas += 1
             else:
-                # Caso contrário, verifica se há condições para modo Sobremarcha (Sprint)
+                # Verificação de modo Sobremarcha (Sprint)
                 sprint_ativo = False
-                if FATOR_SOBREMARCHA > 1.0:
+                if fator_sobremarcha > 1.0:
                     sprint_ativo = True
-                    if b2[i] <= p["gatilho_b2_falta_critica"] + 15.0:
+                    if b2[i] <= p["gatilho_b2_falta_critica"] + (histerese + 5.0):
                         sprint_ativo = False
-                    if b3[i] >= p["gatilho_b3_acumulo_critico"] - 15.0:
+                    if b3[i] >= p["gatilho_b3_acumulo_critico"] - (histerese + 5.0):
                         sprint_ativo = False
-                    if sprint_ativo and HAS_B1 and b1 is not None:
-                        if b1[i] <= p["gatilho_b1_falta_extrema"] + 15.0:
+                    if sprint_ativo and has_b1 and b1 is not None:
+                        if b1[i] <= p["gatilho_b1_falta_extrema"] + (histerese + 5.0):
                             sprint_ativo = False
-                    if sprint_ativo and HAS_B4 and b4 is not None:
-                        if b4[i] >= p["gatilho_b4_acumulo_extremo"] - 20.0:
+                    if sprint_ativo and has_b4 and b4 is not None:
+                        if b4[i] >= p["gatilho_b4_acumulo_extremo"] - (histerese + 10.0):
                             sprint_ativo = False
 
                 if sprint_ativo:
-                    fator_velocidade = max(FATOR_SOBREMARCHA, v_ech_real[i] / VELOCIDADE_NOMINAL_ECH)
+                    fator_velocidade = max(fator_sobremarcha, v_ech_real[i] / vel_nominal_ech)
                 else:
-                    # Caso contrário, preserva a velocidade real histórica
-                    fator_velocidade = v_ech_real[i] / VELOCIDADE_NOMINAL_ECH
+                    fator_velocidade = v_ech_real[i] / vel_nominal_ech
 
-            # Conta paradas de soco proativas (momento em que o buffer extremo
-            # teria causado parada breve, mas o operador/CLP teria desacelerado):
-            if HAS_B4 and b4_ativo and v_rot[i] < VELOCIDADE_NOMINAL_ECH:
+            if has_b4 and b4_ativo and v_rot[i] < vel_nominal_ech:
                 paradas_soco_evitadas += 1
-            elif HAS_B1 and HAS_V_DPL and b1_ativo and v_dpl[i] < VELOCIDADE_NOMINAL_ECH:
+            elif has_b1 and has_v_dpl and b1_ativo and v_dpl[i] < vel_nominal_ech:
                 paradas_soco_evitadas += 1
 
-        cph_calculado = VELOCIDADE_NOMINAL_ECH * fator_velocidade
+        cph_calculado = vel_nominal_ech * fator_velocidade
         producao_total_simulada += (cph_calculado / 3600.0) * time_step
         if retornar_series:
             velocidades_simuladas.append(cph_calculado)
@@ -396,112 +321,88 @@ def simular_historico_com_regras_ia(dados_df, p, time_step, mascara_parada, reto
         return score_fitness, producao_total_simulada, paradas_soco_reais_ocorridas, paradas_externas_ocorridas, paradas_soco_evitadas, velocidades_simuladas
     return score_fitness, producao_total_simulada, paradas_soco_reais_ocorridas, paradas_externas_ocorridas, paradas_soco_evitadas
 
-# =====================================================================
-# 5. IMPLEMENTAÇÃO CMA-ES (sem dependência externa)
-# =====================================================================
-# CMA-ES — Covariance Matrix Adaptation Evolution Strategy
-# Referência: Hansen, N. (2016). The CMA Evolution Strategy: A Tutorial.
-# Vantagem sobre busca aleatória: adapta a direção e escala da busca
-# usando a matriz de covariância da população, convergindo muito mais
-# rápido em problemas contínuos e multimodais.
 
 def cma_es(
-    func,           # função a MAXIMIZAR (retorna escalar)
-    x0,             # ponto inicial (vetor numpy)
-    sigma0=1.5,     # desvio-padrão inicial
-    max_iter=500,   # máximo de gerações
-    tol=1e-8,       # tolerância de convergência (sigma)
+    func,
+    x0,
+    sigma0=1.5,
+    max_iter=500,
+    tol=1e-8,
     seed=42
 ):
+    """Implementação do algoritmo CMA-ES puro (sem dependência externa)."""
     rng = np.random.default_rng(seed)
-    n   = len(x0)   # dimensão do espaço de busca (8)
+    n = len(x0)
 
-    # --- Tamanho da população ---
-    lam = 4 + int(np.floor(3 * np.log(n)))   # ~10 para n=8
-    mu  = lam // 2                             # ~5 pais selecionados
+    lam = 4 + int(np.floor(3 * np.log(n)))
+    mu = lam // 2
 
-    # --- Pesos de recombinação (log-rank) ---
     weights_raw = np.log(mu + 0.5) - np.log(np.arange(1, mu + 1))
-    weights     = weights_raw / weights_raw.sum()
-    mueff       = 1.0 / (weights ** 2).sum()   # variância efetiva
+    weights = weights_raw / weights_raw.sum()
+    mueff = 1.0 / (weights ** 2).sum()
 
-    # --- Constantes de adaptação ---
-    cc    = (4 + mueff / n) / (n + 4 + 2 * mueff / n)
-    cs    = (mueff + 2) / (n + mueff + 5)
-    c1    = 2.0 / ((n + 1.3) ** 2 + mueff)
-    cmu   = min(1 - c1, 2 * (mueff - 2 + 1 / mueff) / ((n + 2) ** 2 + mueff))
+    cc = (4 + mueff / n) / (n + 4 + 2 * mueff / n)
+    cs = (mueff + 2) / (n + mueff + 5)
+    c1 = 2.0 / ((n + 1.3) ** 2 + mueff)
+    cmu = min(1 - c1, 2 * (mueff - 2 + 1 / mueff) / ((n + 2) ** 2 + mueff))
     damps = 1 + 2 * max(0, np.sqrt((mueff - 1) / (n + 1)) - 1) + cs
-    chiN  = n ** 0.5 * (1 - 1 / (4 * n) + 1 / (21 * n ** 2))  # E[||N(0,I)||]
+    chiN = n ** 0.5 * (1 - 1 / (4 * n) + 1 / (21 * n ** 2))
 
-    # --- Estado inicial ---
-    xmean  = x0.copy().astype(float)
-    sigma  = float(sigma0)
-    pc     = np.zeros(n)   # caminho de evolução para C
-    ps     = np.zeros(n)   # caminho de evolução para sigma
-    B      = np.eye(n)     # autovetores de C
-    D      = np.ones(n)    # autovalores de C (raiz)
-    C      = np.eye(n)     # matriz de covariância
+    xmean = x0.copy().astype(float)
+    sigma = float(sigma0)
+    pc = np.zeros(n)
+    ps = np.zeros(n)
+    B = np.eye(n)
+    D = np.ones(n)
+    C = np.eye(n)
     invsqrtC = np.eye(n)
-    eigeneval = 0          # controle de reavaliação da decomposição
+    eigeneval = 0
 
-    melhor_score  = -np.inf
-    melhor_x      = xmean.copy()
+    melhor_score = -np.inf
+    melhor_x = xmean.copy()
     historico_scores = []
-    
-    # Controle de estagnação (early stopping)
-    max_stagnation = 50  # gerações sem melhora significativa
+
+    max_stagnation = 50
     geracoes_sem_melhora = 0
-    tol_score = 1.0      # melhoria mínima no score para zerar a estagnação
+    tol_score = 1.0
 
     print(f"\n{'='*60}")
-    print(f"  OTIMIZADOR AVANÇADO  |  n={n}  λ={lam}  μ={mu}")
+    print(f"  OTIMIZADOR CMA-ES  |  n={n}  λ={lam}  μ={mu}")
     print(f"  σ₀={sigma0}  max_iter={max_iter}")
     print(f"{'='*60}")
 
     for gen in range(max_iter):
-        # --- Amostragem da população ---
-        arz  = rng.standard_normal((lam, n))      # amostras padrão
-        arx  = xmean + sigma * (arz @ (B * D).T)  # amostras no espaço original
+        arz = rng.standard_normal((lam, n))
+        arx = xmean + sigma * (arz @ (B * D).T)
 
-        # --- Avaliação (CMA-ES maximiza, passamos -score para minimizar internamente) ---
         fitness = np.array([func(xi) for xi in arx])
+        idx = np.argsort(fitness)[::-1]
 
-        # --- Ordenação: do melhor ao pior ---
-        idx = np.argsort(fitness)[::-1]   # decrescente (maximização)
-
-        # Atualiza melhor global e checa estagnação
         melhor_da_geracao = fitness[idx[0]]
         if melhor_da_geracao > melhor_score + tol_score:
             melhor_score = melhor_da_geracao
-            melhor_x     = arx[idx[0]].copy()
+            melhor_x = arx[idx[0]].copy()
             geracoes_sem_melhora = 0
         elif melhor_da_geracao > melhor_score:
             melhor_score = melhor_da_geracao
-            melhor_x     = arx[idx[0]].copy()
+            melhor_x = arx[idx[0]].copy()
             geracoes_sem_melhora += 1
         else:
             geracoes_sem_melhora += 1
 
         historico_scores.append(melhor_score)
 
-        # Log a cada 50 gerações
         if gen % 50 == 0 or gen == max_iter - 1:
             print(f"  Geração {gen:4d} | Melhor score: {melhor_score:,.1f} | σ: {sigma:.4f} | Estagnação: {geracoes_sem_melhora}/{max_stagnation}")
 
-        # --- Recombinação dos μ melhores ---
-        xold   = xmean.copy()
-        xmean  = weights @ arx[idx[:mu]]
+        xold = xmean.copy()
+        xmean = weights @ arx[idx[:mu]]
 
-        # --- Atualização do caminho ps (para controle de sigma) ---
         ps = (1 - cs) * ps + np.sqrt(cs * (2 - cs) * mueff) * invsqrtC @ (xmean - xold) / sigma
+        hsig = (np.linalg.norm(ps) / np.sqrt(1 - (1 - cs) ** (2 * (gen + 1))) / chiN) < (1.4 + 2 / (n + 1))
+        pc = (1 - cc) * pc + hsig * np.sqrt(cc * (2 - cc) * mueff) * (xmean - xold) / sigma
 
-        # --- Atualização do caminho pc (para rank-1 da covariância) ---
-        hsig   = (np.linalg.norm(ps) / np.sqrt(1 - (1 - cs) ** (2 * (gen + 1))) / chiN) < (1.4 + 2 / (n + 1))
-        pc     = (1 - cc) * pc + hsig * np.sqrt(cc * (2 - cc) * mueff) * (xmean - xold) / sigma
-
-        # --- Atualização da Matriz de Covariância C ---
         artmp = (1 / sigma) * (arx[idx[:mu]] - xold)
-        # Calcula a soma ponderada dos produtos externos usando np.einsum
         C_mu = np.einsum('k,ki,kj->ij', weights, artmp, artmp)
         C = (
             (1 - c1 - cmu) * C
@@ -509,269 +410,452 @@ def cma_es(
             + cmu * C_mu
         )
 
-        # --- Atualização do passo sigma ---
         sigma *= np.exp((cs / damps) * (np.linalg.norm(ps) / chiN - 1))
 
-        # --- Decomposição espectral de C (a cada n/10 gerações para eficiência) ---
         if gen - eigeneval > lam / (c1 + cmu) / n / 10:
             eigeneval = gen
-            C = np.triu(C) + np.triu(C, 1).T   # simetrização
+            C = np.triu(C) + np.triu(C, 1).T
             D, B = np.linalg.eigh(C)
-            D    = np.sqrt(np.maximum(D, 1e-20))
+            D = np.sqrt(np.maximum(D, 1e-20))
             invsqrtC = B @ np.diag(1.0 / D) @ B.T
 
-        # --- Critério de convergência ---
         if sigma < tol:
             print(f"\n  ✔ Convergência atingida na geração {gen} (σ={sigma:.2e})")
             break
-            
+
         if geracoes_sem_melhora >= max_stagnation:
-            print(f"\n  ✔ Parada antecipada (Early Stopping) na geração {gen}: Nenhuma melhora significativa após {max_stagnation} gerações consecutivas.")
+            print(f"\n  ✔ Parada antecipada (Early Stopping) na geração {gen}: Sem melhora após {max_stagnation} gerações.")
             break
 
     return melhor_x, melhor_score, historico_scores
 
+
 # =====================================================================
-# 6. EXECUÇÃO DA OTIMIZAÇÃO
+# 2. FLUXO PRINCIPAL DE EXECUÇÃO
 # =====================================================================
-print("\nIniciando Otimização Avançada Multivariável...")
-print("Cruzando velocidades de todas as máquinas com níveis de acúmulo...\n")
 
-# Ponto inicial: centro do espaço de busca
-x0 = (BOUNDS_LO + BOUNDS_HI) / 2.0
+def main():
+    arquivo_config = sys.argv[1] if len(sys.argv) > 1 else "config_colunas.json"
+    arquivo_csv = "dados_completos_fabrica.csv"
 
-# Sigma inicial: 1/4 da amplitude de cada dimensão (em escala normalizada)
-# Como as escalas das variáveis são similares (~10–20%), sigma0=2.0 é razoável
-sigma0 = 2.0
+    # Valores padrão de fallback
+    col_b1 = "accumulation_percentage_DPL_UIP_null"
+    col_b2 = "accumulation_percentage_UIP_ECH_null"
+    col_b3 = "accumulation_percentage_ECH_PZ_null"
+    col_b4 = "accumulation_percentage_PZ_EPC_null"
 
-def objetivo(x):
-    """Wrapper: recebe vetor, converte, simula e retorna score (a maximizar)."""
-    p = vetor_para_params(x)
-    score, prod, paradas_reais, paradas_ext, evitadas = simular_historico_com_regras_ia(
-        df, p, time_step_seconds, mascara_parada_longa
+    col_v_dpl = "speed_actual_cph_null_first_upstream_machine_1"
+    col_v_uip = "speed_actual_cph_null_eci_1"
+    col_v_ech = "speed_actual_cph_null_filler_1"
+    col_v_rot = "speed_actual_cph_null_pasteurizer"
+    col_v_epc = "speed_actual_cph_null_first_downstream_machine_3"
+
+    vel_nominal_config = None
+    filtro_minutos_parada_longa = 10
+    fator_sobremarcha = 1.0
+    limite_parada_falta = None
+    limite_parada_acumulo = None
+    histerese = 5.0
+
+    if os.path.exists(arquivo_config):
+        try:
+            with open(arquivo_config, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                arquivo_csv = cfg.get("Arquivo_Dados", arquivo_csv)
+                col_b1 = cfg.get("Col_Buffer_Antes_Entrada", col_b1)
+                col_b2 = cfg.get("Col_Buffer_Entrada", col_b2)
+                col_b3 = cfg.get("Col_Buffer_Saida", col_b3)
+                col_b4 = cfg.get("Col_Buffer_Pos_Saida", col_b4)
+
+                col_v_dpl = cfg.get("COL_V_Antes_Entrada", col_v_dpl)
+                col_v_uip = cfg.get("COL_V_Entrada", col_v_uip)
+                col_v_ech = cfg.get("COL_V_ECH", col_v_ech)
+                col_v_rot = cfg.get("COL_V_Saida", col_v_rot)
+                col_v_epc = cfg.get("COL_V_Entrada_Pos_Saida", col_v_epc)
+
+                vel_nominal_config = cfg.get("Velocidade_Nominal_ECH", cfg.get("Velocidade_Nominal", None))
+                filtro_minutos_parada_longa_config = cfg.get("Filtro_Minutos_Parada_Longa", None)
+                if filtro_minutos_parada_longa_config is not None:
+                    filtro_minutos_parada_longa = int(filtro_minutos_parada_longa_config)
+
+                fator_sobremarcha = float(cfg.get("Fator_Sobremarcha", 1.0))
+                limite_parada_falta = cfg.get("Limite_Parada_Falta", None)
+                limite_parada_acumulo = cfg.get("Limite_Parada_Acumulo", None)
+                histerese = float(cfg.get("Histerese", 5.0))
+            print(f"➔ Configuração de colunas carregada de '{arquivo_config}'. Histerese: {histerese:.1f}%")
+        except Exception as e:
+            print(f"⚠️ Erro ao ler '{arquivo_config}': {e}. Usando padrões.")
+
+    # Se não existir no diretório atual, busca relativo ao arquivo de configuração
+    if not os.path.exists(arquivo_csv):
+        dir_cfg = os.path.dirname(os.path.abspath(arquivo_config))
+        caminho_alt = os.path.join(dir_cfg, arquivo_csv)
+        if os.path.exists(caminho_alt):
+            arquivo_csv = caminho_alt
+
+    # Se ainda assim não existir CSV real, gera dados simulados
+    if not os.path.exists(arquivo_csv):
+        print(f"Arquivo '{arquivo_csv}' não encontrado. Gerando dados simulados...")
+        linhas = 3600
+        time_idx = pd.date_range(start="2026-05-29 10:00:00", periods=linhas, freq="s")
+        v_epc = [52700] * linhas
+        for i in range(600, 1200): v_epc[i] = 0
+        v_rot = [52700] * linhas
+        for i in range(700, 1200): v_rot[i] = 15000
+
+        gen_b1 = col_b1 if col_b1 else "accumulation_percentage_DPL_UIP_null"
+        gen_b2 = col_b2 if col_b2 else "accumulation_percentage_UIP_ECH_null"
+        gen_b3 = col_b3 if col_b3 else "accumulation_percentage_ECH_PZ_null"
+        gen_b4 = col_b4 if col_b4 else "accumulation_percentage_PZ_EPC_null"
+        gen_v_dpl = col_v_dpl if col_v_dpl else "speed_actual_cph_null_first_upstream_machine_1"
+        gen_v_uip = col_v_uip if col_v_uip else "speed_actual_cph_null_eci_1"
+        gen_v_ech = col_v_ech if col_v_ech else "speed_actual_cph_null_filler_1"
+        gen_v_rot = col_v_rot if col_v_rot else "speed_actual_cph_null_pasteurizer"
+        gen_v_epc = col_v_epc if col_v_epc else "speed_actual_cph_null_first_downstream_machine_3"
+
+        df_fake = pd.DataFrame({
+            "Timestamp": time_idx,
+            gen_b1: np.random.uniform(50, 60, linhas),
+            gen_b2: np.random.uniform(45, 55, linhas),
+            gen_b3:  np.linspace(40, 95, linhas),
+            gen_b4:  np.linspace(50, 100, linhas),
+            gen_v_dpl: [70400] * linhas,
+            gen_v_uip: [52700] * linhas,
+            gen_v_ech: [52700] * linhas,
+            gen_v_rot: v_rot,
+            gen_v_epc: v_epc
+        })
+        df_fake.to_csv(arquivo_csv, index=False)
+
+    df = pd.read_csv(arquivo_csv)
+
+    # Resolução de colunas
+    col_b1 = resolver_coluna(df, col_b1, "accumulation_percentage_DPL_UIP_null", opcional=True)
+    col_b2 = resolver_coluna(df, col_b2, "accumulation_percentage_UIP_ECH_null")
+    col_b3 = resolver_coluna(df, col_b3, "accumulation_percentage_ECH_PZ_null")
+    col_b4 = resolver_coluna(df, col_b4, "accumulation_percentage_PZ_EPC_null", opcional=True)
+
+    col_v_dpl = resolver_coluna(df, col_v_dpl, "speed_actual_cph_null_first_upstream_machine_1", opcional=True)
+    col_v_uip = resolver_coluna(df, col_v_uip, "speed_actual_cph_null_eci_1")
+    col_v_ech = resolver_coluna(df, col_v_ech, "speed_actual_cph_null_filler_1")
+    col_v_rot = resolver_coluna(df, col_v_rot, "speed_actual_cph_null_pasteurizer")
+    col_v_epc = resolver_coluna(df, col_v_epc, "speed_actual_cph_null_first_downstream_machine_3", opcional=True)
+
+    has_b1 = col_b1 is not None
+    has_v_dpl = col_v_dpl is not None
+    has_b4 = col_b4 is not None
+    has_v_epc = col_v_epc is not None
+
+    ativo_b1 = "ATIVO" if has_b1 else "INATIVO"
+    ativo_b4 = "ATIVO" if has_b4 else "INATIVO"
+    print(f"➔ Configuração dos pulmões de extremidade: B1 (Antes Entrada) = {ativo_b1} | B4 (Pós Saída) = {ativo_b4}")
+
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    df.ffill(inplace=True)
+    df.fillna(0.0, inplace=True)
+
+    # Detecção do timestep
+    if len(df) > 1:
+        time_step_seconds = int((df["Timestamp"].iloc[1] - df["Timestamp"].iloc[0]).total_seconds())
+        if time_step_seconds <= 0:
+            time_step_seconds = 1
+    else:
+        time_step_seconds = 1
+
+    print(f"➔ Intervalo de amostragem detectado: {time_step_seconds} segundos.")
+
+    v_ech_real_hist = df[col_v_ech].values
+
+    # Velocidade Nominal
+    if vel_nominal_config is not None and vel_nominal_config > 0:
+        vel_nominal_ech = float(vel_nominal_config)
+        print(f"➔ Velocidade Nominal ECH definida pelo usuário: {vel_nominal_ech:.0f} CPH")
+    else:
+        vels_ativas = v_ech_real_hist[v_ech_real_hist > 1000]
+        if len(vels_ativas) > 0:
+            vel_nominal_ech = float(np.percentile(vels_ativas, 90))
+            print(f"➔ Velocidade Nominal ECH calculada dinamicamente (p90): {vel_nominal_ech:.0f} CPH")
+        else:
+            vel_nominal_ech = 52700.0
+
+    # =====================================================================
+    # 3. DETECÇÃO AUTOMÁTICA DE FRONTEIRAS DE FALHA E LIMITES DE BUSCA
+    # =====================================================================
+    bounds_lo, bounds_hi, info_limites_auto = calcular_limites_busca_automaticos(
+        df=df,
+        col_v_ech=col_v_ech,
+        col_b2=col_b2,
+        col_b3=col_b3,
+        col_b1=col_b1,
+        col_b4=col_b4,
+        vel_nominal=vel_nominal_ech,
+        histerese=histerese
     )
-    
-    # 1. Penaliza se o gatilho de falta (B2) for perigosamente perto da parada física (LIMITE_PARADA_FALTA)
-    margem_falta = p["gatilho_b2_falta_critica"] - LIMITE_PARADA_FALTA
-    penalidade_risco_falta = (12.0 - margem_falta) ** 2 * 1000.0 if margem_falta < 12.0 else 0.0
 
-    # 2. Penaliza se o gatilho de acúmulo (B3) for perigosamente perto da parada física (LIMITE_PARADA_ACUMULO)
-    margem_acumulo = LIMITE_PARADA_ACUMULO - p["gatilho_b3_acumulo_critico"]
-    penalidade_risco_acumulo = (12.0 - margem_acumulo) ** 2 * 1000.0 if margem_acumulo < 12.0 else 0.0
+    # Trava de segurança contra regressão (Fail-Safe industrial):
+    if has_b4 and bounds_lo[6] < 70.0:
+        raise ValueError(f"CRÍTICO: O limite inferior de busca para B4 ({bounds_lo[6]:.1f}%) não pode ser menor que 70.0% para evitar travamento da linha em 68%!")
+    if histerese > 8.0:
+        raise ValueError(f"CRÍTICO: Histerese de {histerese:.1f}% é excessiva. O valor seguro para evitar armadilha de estado booleano é <= 8.0%!")
 
-    # Penalidade quadrática por extrapolar os limites do vetor
-    penalidade_bounds = 0.0
-    for i in range(len(x)):
-        if x[i] < BOUNDS_LO[i]:
-            penalidade_bounds += (BOUNDS_LO[i] - x[i]) ** 2 * 100000.0
-        elif x[i] > BOUNDS_HI[i]:
-            penalidade_bounds += (x[i] - BOUNDS_HI[i]) ** 2 * 100000.0
+    # Atualiza limites de parada física caso não configurados manualmente
+    if limite_parada_falta is None:
+        limite_parada_falta = info_limites_auto["limite_falta_b2"]
+    if limite_parada_acumulo is None:
+        limite_parada_acumulo = info_limites_auto["limite_acumulo_b3"]
 
-    return score - penalidade_risco_falta - penalidade_risco_acumulo - penalidade_bounds
+    print("\n" + "="*65)
+    print("📊 LIMITES DE BUSCA DINÂMICOS DETECTADOS A PARTIR DAS FALHAS:")
+    print("="*65)
+    print(f" ➔ B2 (Entrada):       [{bounds_lo[2]:.1f}%, {bounds_hi[2]:.1f}%] (Fronteira Falta: {info_limites_auto['limite_falta_b2']:.1f}%)")
+    print(f" ➔ B3 (Saída ECH-PZ):  [{bounds_lo[4]:.1f}%, {bounds_hi[4]:.1f}%] (Fronteira Acúmulo: {info_limites_auto['limite_acumulo_b3']:.1f}%)")
+    if has_b4:
+        print(f" ➔ B4 (Pós PZ-EPC):    [{bounds_lo[6]:.1f}%, {bounds_hi[6]:.1f}%] (Fronteira Acúmulo: {info_limites_auto['limite_acumulo_b4']:.1f}%)")
+    if has_b1:
+        print(f" ➔ B1 (Antes Entrada): [{bounds_lo[0]:.1f}%, {bounds_hi[0]:.1f}%] (Fronteira Falta: {info_limites_auto['limite_falta_b1']:.1f}%)")
+    print(f" ➔ Histerese Global:   {histerese:.1f}%")
+    print(f" ➔ Limites Parada CLP: Falta <= {limite_parada_falta:.1f}% | Acúmulo >= {limite_parada_acumulo:.1f}%")
+    print("="*65 + "\n")
 
-melhor_x, melhor_score_cma, historico = cma_es(
-    func     = objetivo,
-    x0       = x0,
-    sigma0   = sigma0,
-    max_iter = 500,
-    tol      = 1e-8,
-    seed     = 42
-)
+    # Filtro de paradas externas longas inegociáveis
+    limite_amostras_parada = int((filtro_minutos_parada_longa * 60) / time_step_seconds)
+    is_zero = (v_ech_real_hist == 0.0)
+    mascara_parada_longa = np.zeros(len(df), dtype=bool)
+    contador_parada = 0
+    inicio_parada = -1
 
-melhores_parametros = vetor_para_params(melhor_x)
+    for i in range(len(df)):
+        if is_zero[i]:
+            if contador_parada == 0:
+                inicio_parada = i
+            contador_parada += 1
+        else:
+            if contador_parada > limite_amostras_parada:
+                mascara_parada_longa[inicio_parada:i] = True
+            contador_parada = 0
+    if contador_parada > limite_amostras_parada:
+        mascara_parada_longa[inicio_parada:] = True
 
-# Coleta série temporal com os melhores parâmetros encontrados
-_, v_prod, v_paradas, v_paradas_ext, v_evitadas, vel_simulada = simular_historico_com_regras_ia(
-    df, melhores_parametros, time_step_seconds, mascara_parada_longa, retornar_series=True
-)
+    print(f"➔ Filtro Parada Longa: {filtro_minutos_parada_longa}min ({limite_amostras_parada} amostras). {mascara_parada_longa.sum()} amostras inegociáveis.")
 
-producao_real_historica = (df[COL_V_ECH].sum() / 3600.0) * time_step_seconds
-ganho_garrafas  = v_prod - producao_real_historica
-ganho_percentual = (ganho_garrafas / producao_real_historica * 100) if producao_real_historica > 0 else 0.0
+    # Ponto inicial e sigma
+    x0 = (bounds_lo + bounds_hi) / 2.0
+    sigma0 = 2.0
 
-# =====================================================================
-# 7. RELATÓRIO FINAL
-# =====================================================================
+    def objetivo(x):
+        p = vetor_para_params(x, bounds_lo, bounds_hi)
+        score, prod, paradas_reais, paradas_ext, evitadas = simular_historico_com_regras_ia(
+            df, p, time_step_seconds, mascara_parada_longa,
+            col_b2, col_b3, col_v_ech, col_v_rot,
+            col_b1, col_v_dpl, col_b4, col_v_epc,
+            vel_nominal_ech, fator_sobremarcha,
+            limite_parada_falta, limite_parada_acumulo,
+            histerese
+        )
 
-# Contabilização real das paradas simuladas (quando a velocidade simulada é de fato zero)
-vel_sim_arr = np.array(vel_simulada)
-sim_stops_buffer = int(((vel_sim_arr == 0.0) & ((b2_hist <= LIMITE_PARADA_FALTA) | (b3_hist >= LIMITE_PARADA_ACUMULO))).sum())
-sim_stops_external = int(((vel_sim_arr == 0.0) & (b2_hist > LIMITE_PARADA_FALTA) & (b3_hist < LIMITE_PARADA_ACUMULO)).sum())
+        # Penalidades suaves de risco físico (baseadas na fronteira de falha real)
+        margem_falta = p["gatilho_b2_falta_critica"] - limite_parada_falta
+        penalidade_risco_falta = (4.0 - margem_falta) ** 2 * 1000.0 if margem_falta < 4.0 else 0.0
 
-# Contabilização de amostras em nível crítico de buffer onde a parada foi evitada reduzindo a velocidade
-criticos_evitados = int(((df[COL_B2_UIP_ECH] <= 2.0) | (df[COL_B3_ECH_PZ] >= 99.0)).sum())
-reducao = hist_stops_buffer - sim_stops_buffer
+        margem_acumulo = limite_parada_acumulo - p["gatilho_b3_acumulo_critico"]
+        penalidade_risco_acumulo = (4.0 - margem_acumulo) ** 2 * 1000.0 if margem_acumulo < 4.0 else 0.0
 
-# --- Monta o relatório numa lista de linhas para reutilizar no terminal e no arquivo ---
-_rel = []
-_rel.append("")
-_rel.append("="*65)
-_rel.append("   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   ")
-_rel.append("="*65)
-_rel.append(f"➔ Produção Real Registrada no Histórico: {int(producao_real_historica)} unidades.")
-_rel.append(f"➔ Produção Simulada Otimizada : {int(v_prod)} unidades.")
-if ganho_garrafas > 0:
-    _rel.append(f"➔ GANHO DE PRODUÇÃO ESTIMADO  : +{int(ganho_garrafas)} unidades (+{ganho_percentual:.2f}%)")
-else:
-    _rel.append(f"➔ GANHO DE PRODUÇÃO ESTIMADO  : 0 unidades (Linha já rodou de forma ótima)")
+        penalidade_bounds = 0.0
+        for i in range(len(x)):
+            if x[i] < bounds_lo[i]:
+                penalidade_bounds += (bounds_lo[i] - x[i]) ** 2 * 100000.0
+            elif x[i] > bounds_hi[i]:
+                penalidade_bounds += (x[i] - bounds_hi[i]) ** 2 * 100000.0
 
-_rel.append("")
-_rel.append("[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]")
-_rel.append(f"➔ Paradas por Falta/Acúmulo (Buffers):")
-_rel.append(f"   ↳ No histórico original : {hist_stops_buffer} amostras")
-_rel.append(f"   ↳ Na simulação Otimizada : {sim_stops_buffer} amostras")
-_rel.append(f"   ↳ EVITADAS PELO OTIMIZADOR  : {reducao} amostras ({(reducao/max(1,hist_stops_buffer)*100):.1f}% de melhoria)")
-_rel.append(f"   ↳ Amostras críticas de buffer mantidas em marcha reduzida: {criticos_evitados} amostras")
-_rel.append(f"➔ Paradas por Motivos Externos (Mecânica/Operador):")
-_rel.append(f"   ↳ No histórico original : {hist_stops_external} amostras")
-_rel.append(f"   ↳ Na simulação Otimizada : {sim_stops_external} amostras")
+        return score - penalidade_risco_falta - penalidade_risco_acumulo - penalidade_bounds
 
-_rel.append("")
-_rel.append("[VELOCIDADE ALTA (100%)]")
-_rel.append(f"➔ Ação: Enchedora → 100.0% ({int(VELOCIDADE_NOMINAL_ECH)} CPH)")
-_rel.append("➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):")
-if HAS_B1 and HAS_V_DPL:
-    _rel.append(f"   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > {melhores_parametros['gatilho_b1_falta_extrema'] + 10.0:.1f}%")
-_rel.append(f"   ↳ Nível do Pulmão UIP-ECH (Entrada)        > {melhores_parametros['gatilho_b2_falta_critica'] + 10.0:.1f}%")
-_rel.append(f"   ↳ Nível do Pulmão ECH-PZ (Saída)           < {melhores_parametros['gatilho_b3_acumulo_critico'] - 10.0:.1f}%")
-if HAS_B4:
-    _rel.append(f"   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < {melhores_parametros['gatilho_b4_acumulo_extremo'] - 15.0:.1f}%")
+    # Execução do CMA-ES
+    melhor_x, melhor_score_cma, historico = cma_es(
+        func=objetivo,
+        x0=x0,
+        sigma0=sigma0,
+        max_iter=500,
+        tol=1e-8,
+        seed=42
+    )
 
-if FATOR_SOBREMARCHA > 1.0:
+    melhores_parametros = vetor_para_params(melhor_x, bounds_lo, bounds_hi)
+
+    # Coleta da simulação com a melhor parametrização
+    _, v_prod, v_paradas, v_paradas_ext, v_evitadas, vel_simulada = simular_historico_com_regras_ia(
+        df, melhores_parametros, time_step_seconds, mascara_parada_longa,
+        col_b2, col_b3, col_v_ech, col_v_rot,
+        col_b1, col_v_dpl, col_b4, col_v_epc,
+        vel_nominal_ech, fator_sobremarcha,
+        limite_parada_falta, limite_parada_acumulo,
+        histerese,
+        retornar_series=True
+    )
+
+    producao_real_historica = (df[col_v_ech].sum() / 3600.0) * time_step_seconds
+    ganho_garrafas = v_prod - producao_real_historica
+    ganho_percentual = (ganho_garrafas / producao_real_historica * 100) if producao_real_historica > 0 else 0.0
+
+    b2_hist = df[col_b2].values
+    b3_hist = df[col_b3].values
+    vel_sim_arr = np.array(vel_simulada)
+
+    hist_stops_total = int((v_ech_real_hist == 0.0).sum())
+    hist_stops_buffer = int(((v_ech_real_hist == 0.0) & ((b2_hist <= limite_parada_falta) | (b3_hist >= limite_parada_acumulo))).sum())
+    hist_stops_external = hist_stops_total - hist_stops_buffer
+
+    sim_stops_buffer = int(((vel_sim_arr == 0.0) & ((b2_hist <= limite_parada_falta) | (b3_hist >= limite_parada_acumulo))).sum())
+    sim_stops_external = int(((vel_sim_arr == 0.0) & (b2_hist > limite_parada_falta) & (b3_hist < limite_parada_acumulo)).sum())
+
+    reducoes_velocidade_critica = int(((vel_sim_arr > 0.0) & (vel_sim_arr < vel_nominal_ech * 0.99)).sum())
+
+    # =====================================================================
+    # 4. GERAÇÃO DO RELATÓRIO TÉCNICO
+    # =====================================================================
+    _rel = []
     _rel.append("")
-    _rel.append(f"[VELOCIDADE SPRINT ({(FATOR_SOBREMARCHA*100):.1f}%)]")
-    _rel.append(f"➔ Ação: Enchedora → {(FATOR_SOBREMARCHA*100):.1f}% ({int(VELOCIDADE_NOMINAL_ECH * FATOR_SOBREMARCHA)} CPH)")
-    _rel.append("➔ Condições para rodar no Sprint (Exigência de 5% de margem além do 100%):")
-    if HAS_B1 and HAS_V_DPL:
-        gat_b1_sprint = melhores_parametros['gatilho_b1_falta_extrema'] + 15.0
-        _rel.append(f"   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > {gat_b1_sprint:.1f}% (Margem Extra)")
-    gat_b2_sprint = melhores_parametros['gatilho_b2_falta_critica'] + 15.0
-    _rel.append(f"   ↳ Nível do Pulmão UIP-ECH (Entrada)        > {gat_b2_sprint:.1f}% (Margem Extra)")
-    gat_b3_sprint = melhores_parametros['gatilho_b3_acumulo_critico'] - 15.0
-    _rel.append(f"   ↳ Nível do Pulmão ECH-PZ (Saída)           < {gat_b3_sprint:.1f}% (Margem Extra)")
-    if HAS_B4:
-        gat_b4_sprint = melhores_parametros['gatilho_b4_acumulo_extremo'] - 20.0
-        _rel.append(f"   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < {gat_b4_sprint:.1f}% (Margem Extra)")
+    _rel.append("="*65)
+    _rel.append("   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   ")
+    _rel.append("="*65)
+    _rel.append(f"➔ Produção Real Registrada no Histórico: {int(producao_real_historica)} unidades.")
+    _rel.append(f"➔ Produção Simulada Otimizada : {int(v_prod)} unidades.")
+    _rel.append(f"➔ GANHO DE PRODUÇÃO ESTIMADO  : +{int(ganho_garrafas)} unidades (+{ganho_percentual:.2f}%)")
+    _rel.append("")
+    _rel.append("[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]")
+    _rel.append("➔ Paradas por Falta/Acúmulo (Buffers):")
+    _rel.append(f"   ↳ No histórico original : {hist_stops_buffer} amostras")
+    _rel.append(f"   ↳ Na simulação Otimizada : {sim_stops_buffer} amostras")
+    melhoria_buffer = ((hist_stops_buffer - sim_stops_buffer) / hist_stops_buffer * 100) if hist_stops_buffer > 0 else 0.0
+    _rel.append(f"   ↳ EVITADAS PELO OTIMIZADOR  : {hist_stops_buffer - sim_stops_buffer} amostras ({melhoria_buffer:.1f}% de melhoria)")
+    _rel.append(f"   ↳ Amostras críticas de buffer mantidas em marcha reduzida: {reducoes_velocidade_critica} amostras")
+    _rel.append("➔ Paradas por Motivos Externos (Mecânica/Operador):")
+    _rel.append(f"   ↳ No histórico original : {hist_stops_external} amostras")
+    _rel.append(f"   ↳ Na simulação Otimizada : {sim_stops_external} amostras")
+    _rel.append("")
+    _rel.append("[VELOCIDADE ALTA (100%)]")
+    _rel.append(f"➔ Ação: Enchedora → 100.0% ({int(vel_nominal_ech)} CPH)")
+    _rel.append("➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):")
+    if has_b1 and has_v_dpl:
+        _rel.append(f"   ↳ Nível do Pulmão DPL-UIP (Antes Entrada) > {melhores_parametros['gatilho_b1_falta_extrema'] + histerese:.1f}%")
+    _rel.append(f"   ↳ Nível do Pulmão UIP-ECH (Entrada)        > {melhores_parametros['gatilho_b2_falta_critica'] + histerese:.1f}%")
+    _rel.append(f"   ↳ Nível do Pulmão ECH-PZ (Saída)           < {melhores_parametros['gatilho_b3_acumulo_critico'] - histerese:.1f}%")
+    if has_b4:
+        _rel.append(f"   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < {melhores_parametros['gatilho_b4_acumulo_extremo'] - histerese:.1f}%")
 
-_rel.append("")
-_rel.append("[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]")
-contador_entrada = 1
-if HAS_B1 and HAS_V_DPL:
-    _rel.append(f" {contador_entrada}. Tela Falta DPL-UIP (Extremo):")
-    _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ABAIXO de {melhores_parametros['gatilho_b1_falta_extrema']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_falta_extrema']:.1f}% ({int(VELOCIDADE_NOMINAL_ECH * melhores_parametros['vel_ech_falta_extrema']/100)} CPH)")
-    _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ACIMA de {(melhores_parametros['gatilho_b1_falta_extrema'] + 10.0):.1f}%")
-    contador_entrada += 1
+    if fator_sobremarcha > 1.0:
+        _rel.append("")
+        _rel.append(f"[VELOCIDADE SPRINT ({(fator_sobremarcha*100):.1f}%)]")
+        _rel.append(f"➔ Ação: Enchedora → {(fator_sobremarcha*100):.1f}% ({int(vel_nominal_ech * fator_sobremarcha)} CPH)")
+        _rel.append("➔ Condições para rodar no Sprint:")
+        if has_b1 and has_v_dpl:
+            _rel.append(f"   ↳ Nível do Pulmão DPL-UIP > {melhores_parametros['gatilho_b1_falta_extrema'] + histerese + 5.0:.1f}%")
+        _rel.append(f"   ↳ Nível do Pulmão UIP-ECH > {melhores_parametros['gatilho_b2_falta_critica'] + histerese + 5.0:.1f}%")
+        _rel.append(f"   ↳ Nível do Pulmão ECH-PZ  < {melhores_parametros['gatilho_b3_acumulo_critico'] - histerese - 5.0:.1f}%")
+        if has_b4:
+            _rel.append(f"   ↳ Nível do Pulmão PZ-EPC  < {melhores_parametros['gatilho_b4_acumulo_extremo'] - histerese - 10.0:.1f}%")
 
-_rel.append(f"")
-_rel.append(f" {contador_entrada}. Tela Falta UIP-ECH (Interno):")
-_rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ABAIXO de {melhores_parametros['gatilho_b2_falta_critica']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_falta_critica']:.1f}% ({int(VELOCIDADE_NOMINAL_ECH * melhores_parametros['vel_ech_falta_critica']/100)} CPH)")
-_rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ACIMA de {(melhores_parametros['gatilho_b2_falta_critica'] + 10.0):.1f}%")
+    _rel.append("")
+    _rel.append("[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]")
+    contador_entrada = 1
+    if has_b1 and has_v_dpl:
+        _rel.append(f" {contador_entrada}. Tela Falta DPL-UIP (Extremo):")
+        _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ABAIXO de {melhores_parametros['gatilho_b1_falta_extrema']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_falta_extrema']:.1f}% ({int(vel_nominal_ech * melhores_parametros['vel_ech_falta_extrema']/100)} CPH)")
+        _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ACIMA de {(melhores_parametros['gatilho_b1_falta_extrema'] + histerese):.1f}%")
+        contador_entrada += 1
 
-_rel.append("")
-_rel.append("-"*65)
-_rel.append("[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]")
-contador_saida = 1
-_rel.append(f" {contador_saida}. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):")
-_rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ACIMA de {melhores_parametros['gatilho_b3_acumulo_critico']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_acumulo_critico']:.1f}% ({int(VELOCIDADE_NOMINAL_ECH * melhores_parametros['vel_ech_acumulo_critico']/100)} CPH)")
-_rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de {(melhores_parametros['gatilho_b3_acumulo_critico'] - 10.0):.1f}%")
-contador_saida += 1
+    _rel.append(f" {contador_entrada}. Tela Falta UIP-ECH (Interno):")
+    _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ABAIXO de {melhores_parametros['gatilho_b2_falta_critica']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_falta_critica']:.1f}% ({int(vel_nominal_ech * melhores_parametros['vel_ech_falta_critica']/100)} CPH)")
+    _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ACIMA de {(melhores_parametros['gatilho_b2_falta_critica'] + histerese):.1f}%")
 
-if HAS_B4:
-    _rel.append(f"")
-    _rel.append(f" {contador_saida}. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):")
-    _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ACIMA de {melhores_parametros['gatilho_b4_acumulo_extremo']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_acumulo_extremo']:.1f}% ({int(VELOCIDADE_NOMINAL_ECH * melhores_parametros['vel_ech_acumulo_extremo']/100)} CPH)")
-    _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de {(melhores_parametros['gatilho_b4_acumulo_extremo'] - 15.0):.1f}%")
-_rel.append("="*65)
-_rel.append("Pronto! Use esses parâmetros nas suas regras de controle do CLP.")
+    _rel.append("")
+    _rel.append("-"*65)
+    _rel.append("[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]")
+    contador_saida = 1
+    _rel.append(f" {contador_saida}. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):")
+    _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ACIMA de {melhores_parametros['gatilho_b3_acumulo_critico']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_acumulo_critico']:.1f}% ({int(vel_nominal_ech * melhores_parametros['vel_ech_acumulo_critico']/100)} CPH)")
+    _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de {(melhores_parametros['gatilho_b3_acumulo_critico'] - histerese):.1f}%")
+    contador_saida += 1
 
-# --- Imprime no terminal ---
-for linha in _rel:
-    print(linha)
+    if has_b4:
+        _rel.append(f"")
+        _rel.append(f" {contador_saida}. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):")
+        _rel.append(f"    ↳ Gatilho REDUZIR (Start): nível ACIMA de {melhores_parametros['gatilho_b4_acumulo_extremo']:.1f}% → Ação: Enchedora → {melhores_parametros['vel_ech_acumulo_extremo']:.1f}% ({int(vel_nominal_ech * melhores_parametros['vel_ech_acumulo_extremo']/100)} CPH)")
+        _rel.append(f"    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de {(melhores_parametros['gatilho_b4_acumulo_extremo'] - histerese):.1f}%")
+        _rel.append(f"    ↳ [Recomendação]: Acionar prioritariamente quando a máquina de jusante estiver com velocidade reduzida.")
+    _rel.append("="*65)
+    _rel.append("Pronto! Use esses parâmetros nas suas regras de controle do CLP.")
 
-# --- Salva em arquivo de texto ---
-import datetime as _dt
-_tag = os.path.splitext(os.path.basename(ARQUIVO_CONFIG))[0]
-_nome_relatorio = f"relatorio_otimizador_{_tag}_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-with open(_nome_relatorio, "w", encoding="utf-8") as _f:
-    _f.write("\n".join(_rel) + "\n")
-print(f"\n➔ Relatório final salvo em '{_nome_relatorio}'.")
+    for linha in _rel:
+        print(linha)
 
-# --- Salva os parâmetros em JSON para o controlador Live ---
-_dados_exportar = {
-    "data_otimizacao": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "Velocidade_Nominal_ECH": float(VELOCIDADE_NOMINAL_ECH),
-    "gatilho_b1_falta_extrema": float(melhores_parametros.get("gatilho_b1_falta_extrema", 0.0)),
-    "vel_ech_falta_extrema": float(melhores_parametros.get("vel_ech_falta_extrema", 0.0)),
-    "gatilho_b2_falta_critica": float(melhores_parametros.get("gatilho_b2_falta_critica", 0.0)),
-    "vel_ech_falta_critica": float(melhores_parametros.get("vel_ech_falta_critica", 0.0)),
-    "gatilho_b3_acumulo_critico": float(melhores_parametros.get("gatilho_b3_acumulo_critico", 0.0)),
-    "vel_ech_acumulo_critico": float(melhores_parametros.get("vel_ech_acumulo_critico", 0.0)),
-    "gatilho_b4_acumulo_extremo": float(melhores_parametros.get("gatilho_b4_acumulo_extremo", 0.0)),
-    "vel_ech_acumulo_extremo": float(melhores_parametros.get("vel_ech_acumulo_extremo", 0.0)),
-    "Fator_Sobremarcha": float(FATOR_SOBREMARCHA)
-}
-with open(f"parametros_cma_es_{_tag}.json", "w", encoding="utf-8") as _fjson:
-    json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
-with open("parametros_cma_es.json", "w", encoding="utf-8") as _fjson:
-    json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
-print(f"➔ Configurações ótimas salvas em 'parametros_cma_es_{_tag}.json' e 'parametros_cma_es.json' para uso no Live.")
-# =====================================================================
-# 8. EXPORTAÇÃO CSV E GRÁFICO
-# =====================================================================
-if SALVAR_CSV_COMPARATIVO:
-    df_comparado = pd.DataFrame({
-        "Timestamp":                  df["Timestamp"],
-        "Velocidade_Real_Enchedora":  df[COL_V_ECH],
-        "Velocidade_Simulada_Otimizada": vel_simulada,
-        "Buffer_B2_UIP_ECH":          df[COL_B2_UIP_ECH],
-        "Buffer_B3_ECH_PZ":           df[COL_B3_ECH_PZ]
-    })
-    df_comparado.to_csv(f"dados_projetados_otimizado_{_tag}.csv", index=False)
-    df_comparado.to_csv("dados_projetados_otimizado.csv", index=False)
-    print(f"\n➔ CSV comparativo salvo em 'dados_projetados_otimizado_{_tag}.csv'.")
+    import datetime as _dt
+    _tag = os.path.splitext(os.path.basename(arquivo_config))[0]
+    _nome_relatorio = f"relatorio_otimizador_{_tag}_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(_nome_relatorio, "w", encoding="utf-8") as _f:
+        _f.write("\n".join(_rel) + "\n")
+    print(f"\n➔ Relatório final salvo em '{_nome_relatorio}'.")
 
-if GERAR_GRAFICO_PLOTS:
+    # Salva JSON de parâmetros
+    _dados_exportar = {
+        "data_otimizacao": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Velocidade_Nominal_ECH": float(vel_nominal_ech),
+        "gatilho_b1_falta_extrema": float(melhores_parametros.get("gatilho_b1_falta_extrema", 0.0)),
+        "vel_ech_falta_extrema": float(melhores_parametros.get("vel_ech_falta_extrema", 0.0)),
+        "gatilho_b2_falta_critica": float(melhores_parametros.get("gatilho_b2_falta_critica", 0.0)),
+        "vel_ech_falta_critica": float(melhores_parametros.get("vel_ech_falta_critica", 0.0)),
+        "gatilho_b3_acumulo_critico": float(melhores_parametros.get("gatilho_b3_acumulo_critico", 0.0)),
+        "vel_ech_acumulo_critico": float(melhores_parametros.get("vel_ech_acumulo_critico", 0.0)),
+        "gatilho_b4_acumulo_extremo": float(melhores_parametros.get("gatilho_b4_acumulo_extremo", 0.0)),
+        "vel_ech_acumulo_extremo": float(melhores_parametros.get("vel_ech_acumulo_extremo", 0.0)),
+        "Histerese": float(histerese),
+        "Fator_Sobremarcha": float(fator_sobremarcha)
+    }
+    with open(f"parametros_cma_es_{_tag}.json", "w", encoding="utf-8") as _fjson:
+        json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
+    with open("parametros_cma_es.json", "w", encoding="utf-8") as _fjson:
+        json.dump(_dados_exportar, _fjson, indent=2, ensure_ascii=False)
+    print(f"➔ Configurações ótimas salvas em 'parametros_cma_es_{_tag}.json' e 'parametros_cma_es.json'.")
+
+    # Exportação de CSV comparativo e gráficos
     try:
+        df_export = df.copy()
+        df_export["Velocidade_Otimizada"] = vel_simulada
+        nome_csv_export = f"dados_projetados_otimizado_{_tag}.csv"
+        df_export.to_csv(nome_csv_export, index=False)
+        print(f"➔ CSV com simulação salvo em '{nome_csv_export}'.")
+    except Exception as e:
+        print(f"⚠️ Erro ao salvar CSV projetado: {e}")
+
+    # Gráficos
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        # --- Prepara os dados para o gráfico ---
         df_plot = pd.DataFrame({
             "Timestamp": df["Timestamp"],
-            "Real":      df[COL_V_ECH],
+            "Real": df[col_v_ech],
             "Otimizado": vel_simulada,
-            "B2_Entrada": df[COL_B2_UIP_ECH],
-            "B3_Saida":   df[COL_B3_ECH_PZ]
+            "B2_Entrada": df[col_b2],
+            "B3_Saida": df[col_b3]
         }).set_index("Timestamp")
-        df_smooth = df_plot.resample("5Min").mean().reset_index()
 
-        # Extrai os dias únicos para separar os gráficos
-        df_smooth['Date'] = df_smooth['Timestamp'].dt.date
-        dias_unicos = df_smooth['Date'].unique()
-        
-        print("\n➔ Gerando gráficos detalhados dia a dia...")
+        df_smooth = df_plot.resample("5min").mean().reset_index()
+        df_smooth["Date"] = df_smooth["Timestamp"].dt.date
+        dias_unicos = df_smooth["Date"].unique()
 
-        # Gera e salva um gráfico para cada dia
+        print("\n➔ Gerando gráficos dia a dia...")
         for dia in dias_unicos:
             df_dia = df_smooth[df_smooth['Date'] == dia]
-            
-            # Pula dias que podem ter ficado sem dados após o resample
-            if df_dia.empty:
-                continue
+            if df_dia.empty: continue
 
             fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+            axes[0].plot(df_dia["Timestamp"], df_dia["Real"], label="Velocidade Real (5m)", color="#E74C3C", alpha=0.7, linewidth=2)
+            axes[0].plot(df_dia["Timestamp"], df_dia["Otimizado"], label="Velocidade Otimizada (5m)", color="#27AE60", alpha=0.9, linewidth=2)
 
-            # --- Painel 1: Comparação de velocidades (Focado no Dia) ---
-            axes[0].plot(df_dia["Timestamp"], df_dia["Real"],   label="Velocidade Real (5m)",    color="#E74C3C", alpha=0.7, linewidth=2)
-            axes[0].plot(df_dia["Timestamp"], df_dia["Otimizado"], label="Velocidade Otimizada (5m)",  color="#27AE60", alpha=0.9, linewidth=2)
-            
-            if FATOR_SOBREMARCHA > 1.0:
-                vel_sprint = VELOCIDADE_NOMINAL_ECH * FATOR_SOBREMARCHA
-                
-                # Cria uma série que só tem valor onde é sobremarcha (o resto fica NaN)
+            if fator_sobremarcha > 1.0:
+                vel_sprint = vel_nominal_ech * fator_sobremarcha
                 sprint_series = df_dia["Otimizado"].where(df_dia["Otimizado"] >= vel_sprint * 0.99)
-                
-                # Plota a linha roxa por cima da verde. 
-                # Usa um marcador pequeno para que picos isolados (de 1 única amostra) também apareçam.
                 axes[0].plot(df_dia["Timestamp"], sprint_series, color="#8E44AD", linewidth=3.0, marker=".", label="Sobremarcha Ativa")
 
             axes[0].set_title(f"Comparação de Velocidades da Enchedora (Dia: {dia})", fontsize=13, fontweight="bold")
@@ -779,13 +863,10 @@ if GERAR_GRAFICO_PLOTS:
             axes[0].legend()
             axes[0].grid(True, linestyle="--", alpha=0.4)
 
-            # --- Painel 2: Nível dos Pulmões (Buffers) ---
             axes[1].plot(df_dia["Timestamp"], df_dia["B2_Entrada"], label="Buffer Entrada (B2)", color="#F39C12", linewidth=2)
             axes[1].plot(df_dia["Timestamp"], df_dia["B3_Saida"], label="Buffer Saída (B3)", color="#8E44AD", linewidth=2)
-            
-            axes[1].axhline(y=LIMITE_PARADA_FALTA, color='r', linestyle=':', label=f"Parada Falta ({LIMITE_PARADA_FALTA}%)")
-            axes[1].axhline(y=LIMITE_PARADA_ACUMULO, color='r', linestyle='--', label=f"Parada Acúmulo ({LIMITE_PARADA_ACUMULO}%)")
-            
+            axes[1].axhline(y=limite_parada_falta, color='r', linestyle=':', label=f"Parada Falta ({limite_parada_falta:.1f}%)")
+            axes[1].axhline(y=limite_parada_acumulo, color='r', linestyle='--', label=f"Parada Acúmulo ({limite_parada_acumulo:.1f}%)")
             axes[1].set_title("Ocupação dos Buffers vs. Tempo", fontsize=13, fontweight="bold")
             axes[1].set_ylabel("Ocupação (%)")
             axes[1].set_ylim(-5, 105)
@@ -795,7 +876,11 @@ if GERAR_GRAFICO_PLOTS:
             plt.tight_layout()
             nome_arquivo = f"comparacao_velocidades_otimizado_{_tag}_{dia}.png"
             plt.savefig(nome_arquivo, dpi=150)
-            plt.close(fig) # Fecha a figura para não consumir RAM acumulada
+            plt.close(fig)
             print(f"   ↳ Salvo: {nome_arquivo}")
     except Exception as e:
         print(f"⚠️ Erro ao gerar gráfico: {e}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,42 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 1103534 unidades.
+➔ Produção Simulada Otimizada : 1179212 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +75678 unidades (+6.86%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 9 amostras
+   ↳ Na simulação Otimizada : 0 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : 9 amostras (100.0% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 151 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 62 amostras
+   ↳ Na simulação Otimizada : 62 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (52000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 54.3%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 52.5%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 50.0%
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+
+ 1. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 44.3% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 54.3%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 62.5% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 52.5%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 65.0% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 50.0%
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.

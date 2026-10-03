@@ -204,12 +204,12 @@ Transmite a cada ciclo todos os campos em tempo real para o InfluxDB e dashboard
 O cliente utiliza diretamente a classe `ControladorVelocidadeV4` de `funcao_controle_v4.py` sem alteração de lógica:
 1. No início de cada ciclo (ex: a cada 10 segundos):
    - Lê os níveis calculados dos buffers: `b1, b2, b3, b4`.
-   - Lê as velocidades das máquinas vizinhas: `v_in` e `v_out`.
+   - Lê as velocidades das máquinas vizinhas e da própria enchedora: `v_in`, `v_out` e `v_atual`.
 2. Executa:
    ```python
    vel, motivo_id = ctrl.calcular_velocidade(
        b1=b1, b2=b2, b3=b3, b4=b4,
-       v_in=v_in, v_out=v_out,
+       v_in=v_in, v_out=v_out, v_atual=v_atual,
        delta_t_s=ciclo_controle_s,
        retornar_motivo=True,
        timestamp=agora_str,
@@ -217,8 +217,10 @@ O cliente utiliza diretamente a classe `ControladorVelocidadeV4` de `funcao_cont
        arquivo_json=arquivo_eventos
    )
    ```
-3. Grava o setpoint `vel` diretamente na tag OPC UA do CLP.
-4. Identifica a causa-raiz com `ctrl.obter_motivo(motivo_id)` e exibe no console em tempo real.
+3. **Trava de Segurança Operacional (Sprint Interlock):**
+   - O controlador avalia `v_atual`. Se a enchedora estiver rodando abaixo de 98% da velocidade nominal de projeto (ex.: operador rebaixou a máquina na IHM por restrição mecânica ou de embalagem), o Sprint fica **100% bloqueado**, garantindo que a máquina nunca seja forçada além da velocidade operacional permitida.
+4. Grava o setpoint `vel` diretamente na tag OPC UA do CLP.
+5. Identifica a causa-raiz com `ctrl.obter_motivo(motivo_id)` e exibe no console em tempo real.
 
 ---
 

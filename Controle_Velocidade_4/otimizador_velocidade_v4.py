@@ -299,10 +299,11 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     # Feedforward B4 acoplado ao escoamento do Pasteurizador
     w_ff_b4 = np.where(b3_hist < 75.0, b4_alerta * deficit_escoamento_saida, b4_alerta)
 
-    # 4. Condição de Sprint / Sobrevelocidade (desacoplada de v_in)
+    # 4. Condição de Sprint / Sobrevelocidade (desacoplada de v_in com Trava de Velocidade da Enchedora)
     b2_sprint_on = np.clip(b2_lim + 15.0, 38.0, 60.0)
     cond_sprint_buffers = (b2_hist >= b2_sprint_on) & (b3_hist <= (b3_lim - 5.0))
-    cond_sprint_maquinas = (v_out_real_hist >= 0.85 * vel_nominal)
+    trava_sprint_enchedora = (v_ech_real_hist >= 0.98 * vel_nominal)
+    cond_sprint_maquinas = (v_out_real_hist >= 0.85 * vel_nominal) & trava_sprint_enchedora
     w_sprint = np.where(cond_sprint_buffers & cond_sprint_maquinas, 1.0, 0.0)
 
     w_entrada_vazia = b2_baixo

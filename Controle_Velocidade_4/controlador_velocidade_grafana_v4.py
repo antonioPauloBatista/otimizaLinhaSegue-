@@ -981,7 +981,7 @@ def main():
             else:
                 # Máquina física real ligada: o controlador modula a velocidade de produção
                 v_otim, motivo_id = controlador.calcular_velocidade(
-                    b1, b2, b3, b4, v_in=vin, v_out=vout, delta_t_s=delta_t_s,
+                    b1, b2, b3, b4, v_in=vin, v_out=vout, v_atual=v_real, delta_t_s=delta_t_s,
                     retornar_motivo=True, timestamp=hora_str,
                     registrar_evento=True, arquivo_json=ARQUIVO_JSON_GRAFANA
                 )
