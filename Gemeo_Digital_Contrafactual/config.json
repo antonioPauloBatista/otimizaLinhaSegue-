@@ -1,0 +1,579 @@
+{
+  "identificacao_linha": {
+    "linha": "512",
+    "fabrica": "Equatorial",
+    "nome_montante": "DPL512001",
+    "nome_principal": "ECH512001",
+    "nome_jusante": "PZ512001",
+    "nome_pos_jusante": "EPC512001"
+  },
+  "servidor_opc": {
+    "url": "opc.tcp://10.46.12.163:49500",
+    "usuario": "",
+    "senha": "",
+    "timeout_s": 5.0,
+    "reconectar_delay_s": 3.0,
+    "publishing_interval_ms": 500
+  },
+  "heartbeat": {
+    "tag": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_HB",
+    "intervalo_s": 1.0,
+    "modo": "pulse_one",
+    "descricao": "Watchdog Handshake: O otimizador sempre escreve 1 (ou True) e o CLP zera para 0."
+  },
+  "maquinas": {
+    "tag_velocidade_montante": "ns=2;s=L512_DPL512001.DPL512001.LMS.DPL512001_S",
+    "tag_velocidade_atual": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_S",
+    "tag_velocidade_jusante": "ns=2;s=L512_PZ512001.PZ512001.LMS.PZ512001_S",
+    "tag_escrita_setpoint": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_SP_W",
+    "unidade_escrita_setpoint": "percentual",
+    "tag_segue_habilitado": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_EN_BT",
+    "tag_status_maquina": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_STATUS",
+    "velocidade_nominal": 90000.0
+  },
+  "buffers": {
+    "B1": {
+      "nome": "B1 - Inexistente na Linha (Layout de 3 Buffers)",
+      "capacidade_area_total_m2": 0.0,
+      "setores": []
+    },
+    "B2": {
+      "nome": "B2 - Entrada Imediata (Alimentação Enchedora DPL-ECH)",
+      "capacidade_area_total_m2": 32.0,
+      "setores": [
+        {
+          "ordem": 1,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.106B2",
+          "comprimento_m": 2.9,
+          "largura_m": 0.4,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 106B2"
+        },
+        {
+          "ordem": 2,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.105B3",
+          "comprimento_m": 2.81,
+          "largura_m": 0.4,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 105B3"
+        },
+        {
+          "ordem": 3,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.105B2",
+          "comprimento_m": 2.7,
+          "largura_m": 1.13,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 105B2"
+        },
+        {
+          "ordem": 4,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.104B2",
+          "comprimento_m": 3.26,
+          "largura_m": 0.93,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 104B2"
+        },
+        {
+          "ordem": 5,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.103B3",
+          "comprimento_m": 6.88,
+          "largura_m": 0.93,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 103B3"
+        },
+        {
+          "ordem": 6,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.103B2",
+          "comprimento_m": 2.73,
+          "largura_m": 0.99,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 103B2"
+        },
+        {
+          "ordem": 7,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.102B5",
+          "comprimento_m": 4.06,
+          "largura_m": 0.94,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 102B5"
+        },
+        {
+          "ordem": 8,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.102B4",
+          "comprimento_m": 4.39,
+          "largura_m": 0.97,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 102B4"
+        },
+        {
+          "ordem": 9,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.102B3",
+          "comprimento_m": 3.7,
+          "largura_m": 0.94,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 102B3"
+        },
+        {
+          "ordem": 10,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.102B2",
+          "comprimento_m": 2.8,
+          "largura_m": 1.06,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 102B2"
+        }
+      ]
+    },
+    "B3": {
+      "nome": "B3 - Saída Imediata (Enchedora para Pasteurizador ECH-PZ)",
+      "capacidade_area_total_m2": 26.01,
+      "setores": [
+        {
+          "ordem": 1,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.125B3",
+          "comprimento_m": 2.0,
+          "largura_m": 0.62,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 125B3"
+        },
+        {
+          "ordem": 2,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.125B2",
+          "comprimento_m": 1.8,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 125B2"
+        },
+        {
+          "ordem": 3,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.124B3",
+          "comprimento_m": 7.33,
+          "largura_m": 0.72,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 124B3"
+        },
+        {
+          "ordem": 4,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.126B3",
+          "comprimento_m": 2.29,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 126B3"
+        },
+        {
+          "ordem": 5,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.126B2",
+          "comprimento_m": 3.24,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 126B2"
+        },
+        {
+          "ordem": 6,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.124B2",
+          "comprimento_m": 4.27,
+          "largura_m": 0.72,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 124B2"
+        },
+        {
+          "ordem": 7,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.123B3",
+          "comprimento_m": 3.86,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 123B3"
+        },
+        {
+          "ordem": 8,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.123B2",
+          "comprimento_m": 3.42,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 123B2"
+        },
+        {
+          "ordem": 9,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.122B2",
+          "comprimento_m": 2.12,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 122B2"
+        },
+        {
+          "ordem": 10,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.121B3",
+          "comprimento_m": 2.03,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 121B3"
+        },
+        {
+          "ordem": 11,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.121B2",
+          "comprimento_m": 2.7,
+          "largura_m": 0.63,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 121B2"
+        },
+        {
+          "ordem": 12,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.120B2",
+          "comprimento_m": 3.68,
+          "largura_m": 0.65,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 120B2"
+        }
+      ]
+    },
+    "B4": {
+      "nome": "B4 - Extremo Saída (Pasteurizador para Empacotadora PZ-EPC)",
+      "capacidade_area_total_m2": 80.35,
+      "setores": [
+        {
+          "ordem": 1,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.158B2",
+          "comprimento_m": 3.98,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 158B2"
+        },
+        {
+          "ordem": 2,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.157B2",
+          "comprimento_m": 2.49,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 157B2"
+        },
+        {
+          "ordem": 3,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.156B3",
+          "comprimento_m": 2.98,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 156B3"
+        },
+        {
+          "ordem": 4,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.156B2",
+          "comprimento_m": 4.15,
+          "largura_m": 0.75,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 156B2"
+        },
+        {
+          "ordem": 5,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.155B3",
+          "comprimento_m": 3.92,
+          "largura_m": 0.75,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 155B3"
+        },
+        {
+          "ordem": 6,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.155B2",
+          "comprimento_m": 4.28,
+          "largura_m": 0.82,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 155B2"
+        },
+        {
+          "ordem": 7,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.154B3",
+          "comprimento_m": 3.34,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 154B3"
+        },
+        {
+          "ordem": 8,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.154B2",
+          "comprimento_m": 4.15,
+          "largura_m": 0.68,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 154B2"
+        },
+        {
+          "ordem": 9,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.153B3",
+          "comprimento_m": 3.33,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 153B3"
+        },
+        {
+          "ordem": 10,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.153B2",
+          "comprimento_m": 3.21,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 153B2"
+        },
+        {
+          "ordem": 11,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.152B2",
+          "comprimento_m": 6.39,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 152B2"
+        },
+        {
+          "ordem": 12,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.151B3",
+          "comprimento_m": 3.88,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 151B3"
+        },
+        {
+          "ordem": 13,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.151B2",
+          "comprimento_m": 4.34,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 151B2"
+        },
+        {
+          "ordem": 14,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.150B3",
+          "comprimento_m": 3.68,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 150B3"
+        },
+        {
+          "ordem": 15,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.150B2",
+          "comprimento_m": 3.99,
+          "largura_m": 0.97,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 150B2"
+        },
+        {
+          "ordem": 16,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.138B2",
+          "comprimento_m": 3.14,
+          "largura_m": 0.45,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 138B2"
+        },
+        {
+          "ordem": 17,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.137B2",
+          "comprimento_m": 3.89,
+          "largura_m": 1.1,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 137B2"
+        },
+        {
+          "ordem": 18,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.136B2",
+          "comprimento_m": 6.0,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 136B2"
+        },
+        {
+          "ordem": 19,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.135B3",
+          "comprimento_m": 3.3,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 135B3"
+        },
+        {
+          "ordem": 20,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.135B2",
+          "comprimento_m": 3.25,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 135B2"
+        },
+        {
+          "ordem": 21,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.134B3",
+          "comprimento_m": 2.97,
+          "largura_m": 0.8,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 134B3"
+        },
+        {
+          "ordem": 22,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.134B2",
+          "comprimento_m": 3.88,
+          "largura_m": 0.8,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 134B2"
+        },
+        {
+          "ordem": 23,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.133B3",
+          "comprimento_m": 1.5,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 133B3"
+        },
+        {
+          "ordem": 24,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.133B2",
+          "comprimento_m": 2.05,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 133B2"
+        },
+        {
+          "ordem": 25,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.132B2",
+          "comprimento_m": 6.0,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 132B2"
+        },
+        {
+          "ordem": 26,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.131B3",
+          "comprimento_m": 3.3,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 131B3"
+        },
+        {
+          "ordem": 27,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.131B2",
+          "comprimento_m": 3.18,
+          "largura_m": 0.78,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 131B2"
+        },
+        {
+          "ordem": 28,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.130B3",
+          "comprimento_m": 4.26,
+          "largura_m": 0.8,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 130B3"
+        },
+        {
+          "ordem": 29,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.130B2",
+          "comprimento_m": 3.88,
+          "largura_m": 0.8,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 130B2"
+        },
+        {
+          "ordem": 30,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.129B3",
+          "comprimento_m": 1.5,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 129B3"
+        },
+        {
+          "ordem": 31,
+          "tag": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.PZ-EPC.129B2",
+          "comprimento_m": 2.05,
+          "largura_m": 0.79,
+          "contato_ativo": false,
+          "habilitado": true,
+          "descricao": "Sensor 129B2"
+        }
+      ]
+    }
+  },
+  "controle": {
+    "ciclo_controle_s": 10.0,
+    "tempo_rampa_subida_s": 10.0,
+    "tempo_rampa_descida_s": 8.0,
+    "banda_morta_cph": 100.0,
+    "fator_sprint": 1.05,
+    "margem_sprint_b2_liga": 15.0,
+    "margem_sprint_b2_desliga": 5.0,
+    "tempo_minimo_sprint_s": 60.0,
+    "modo_sombra": true,
+    "escrever_heartbeat_modo_sombra": false,
+    "arquivo_eventos_json": "eventos_motivos_live_v4.json"
+  },
+  "telemetria_influx": {
+    "habilitado": true,
+    "influx_url": "http://10.46.12.167:8086",
+    "database": "soda",
+    "bucket": "soda",
+    "org": "ABinbev",
+    "measurement_destino": "512_v4",
+    "usuario": "",
+    "senha": "",
+    "timeout_envio_s": 2.0
+  },
+  "parametros_legado": {
+    "tempo_rampa_subida_s": 15.0,
+    "tempo_rampa_descida_s": 8.0,
+    "limiar_corte_b3_pct": 85.0,
+    "limiar_retomada_b3_pct": 65.0,
+    "limiar_corte_b2_pct": 15.0,
+    "limiar_retomada_b2_pct": 35.0,
+    "ton_bloqueio_s": 2.0,
+    "ton_retomada_s": 2.0,
+    "tempo_ancoragem_parada_real_s": 300.0
+  },
+  "buffers_capacidade": {
+    "capacidade_garrafas_b2": 2800.0,
+    "capacidade_garrafas_b3": 3500.0
+  },
+  "auditoria_envase": {
+    "volume_garrafa_litros": 0.355,
+    "horas_disponiveis_turno": 8.0
+  }
+}

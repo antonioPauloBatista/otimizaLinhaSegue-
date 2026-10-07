@@ -32,17 +32,17 @@ class ControladorVelocidadeV4:
         # A velocidade de referência para o tempo de rampa mecânica é a Velocidade Máxima Nominal (vel_nom).
         # Conforme diretriz de automação e segurança: NUNCA se utiliza a sobremarcha/sprint como base da rampa.
         self.vel_nom = float(velocidade_nominal)
-        self.b1_lim = 19.25
-        self.b2_lim = 32.50
-        self.b3_lim = 71.20
+        self.b1_lim = 24.97
+        self.b2_lim = 25.71
+        self.b3_lim = 73.92
         self.b4_lim = 90.00
-        self.rampa_b2 = 24.14
-        self.rampa_b3 = 19.22
-        self.antecip_b1 = 20.96
-        self.antecip_b4 = 11.49
+        self.rampa_b2 = 17.23
+        self.rampa_b3 = 16.44
+        self.antecip_b1 = 24.51
+        self.antecip_b4 = 11.25
         self.min_mod = 0.750
         self.peso_retomada = 0.100
-        self.fator_sprint = float(fator_sprint) if fator_sprint is not None else float(1.030)
+        self.fator_sprint = float(fator_sprint) if fator_sprint is not None else float(1.050)
         self.margem_sprint_b2_liga = float(margem_sprint_b2_liga)
         self.margem_sprint_b2_desliga = float(margem_sprint_b2_desliga)
         self.tempo_minimo_sprint_s = float(tempo_minimo_sprint_s)

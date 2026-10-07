@@ -1,0 +1,42 @@
+
+=================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR: CONFIGURAÇÃO OTIMIZADA DA LINHA   
+=================================================================
+➔ Produção Real Registrada no Histórico: 3621838 unidades.
+➔ Produção Simulada Otimizada : 3993051 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO  : +371213 unidades (+10.25%)
+
+[MÉTRICAS DE PARADAS DE MÁQUINA (0 CPH)]
+➔ Paradas por Falta/Acúmulo (Buffers):
+   ↳ No histórico original : 38 amostras
+   ↳ Na simulação Otimizada : 12 amostras
+   ↳ EVITADAS PELO OTIMIZADOR  : 26 amostras (68.4% de melhoria)
+   ↳ Amostras críticas de buffer mantidas em marcha reduzida: 7331 amostras
+➔ Paradas por Motivos Externos (Mecânica/Operador):
+   ↳ No histórico original : 356 amostras
+   ↳ Na simulação Otimizada : 356 amostras
+
+[VELOCIDADE ALTA (100%)]
+➔ Ação: Enchedora → 100.0% (52000 CPH)
+➔ Condições para rodar a 100% (Todos os pulmões ativos na faixa segura):
+   ↳ Nível do Pulmão UIP-ECH (Entrada)        > 37.1%
+   ↳ Nível do Pulmão ECH-PZ (Saída)           < 78.0%
+   ↳ Nível do Pulmão PZ-EPC (Pós Saída)       < 70.7%
+
+[CADEIA DE ENTRADA - PROTEÇÃO CONTRA FALTA DE GARRAFAS]
+ 1. Tela Falta UIP-ECH (Interno):
+    ↳ Gatilho REDUZIR (Start): nível ABAIXO de 32.1% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ACIMA de 37.1%
+
+-----------------------------------------------------------------
+[CADEIA DE SAÍDA - PROTEÇÃO CONTRA ACÚMULO / ENGARRAFAMENTO]
+ 1. Tela Acúmulo ECH-PZ (Interno - Mais Próximo):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 83.0% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 78.0%
+
+ 2. Tela Acúmulo PZ-EPC (Extremo - Mais Afastado):
+    ↳ Gatilho REDUZIR (Start): nível ACIMA de 75.7% → Ação: Enchedora → 95.0% (49400 CPH)
+    ↳ Gatilho LIGAR   (Clear): nível ABAIXO de 70.7%
+    ↳ [Recomendação]: Acionar prioritariamente quando a máquina de jusante estiver com velocidade reduzida.
+=================================================================
+Pronto! Use esses parâmetros nas suas regras de controle do CLP.

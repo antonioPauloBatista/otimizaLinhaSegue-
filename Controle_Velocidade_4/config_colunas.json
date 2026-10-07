@@ -12,7 +12,7 @@
   "Velocidade_Nominal_ECH": 90000,
   "Limiar_Velocidade_Manutencao": 10000,
   "Filtro_Minutos_Parada_Longa": 10,
-  "Fator_Sobremarcha": 1.03,
+  "Fator_Sobremarcha": 1.05,
   "Min_Modulacao": 0.75,
   "Max_Modulacao": 1.0,
   "Tempo_Rampa_Subida_s": 10.0,

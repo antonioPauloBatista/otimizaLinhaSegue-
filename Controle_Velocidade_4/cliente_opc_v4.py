@@ -279,6 +279,7 @@ class ClienteOPCV4:
         self,
         caminho_config: str,
         modo_sombra: Optional[bool] = None,
+        escrever_hb_sombra: Optional[bool] = None,
         telemetria_override: Optional[Dict[str, Any]] = None
     ):
         self.caminho_config = caminho_config
@@ -288,8 +289,91 @@ class ClienteOPCV4:
         self.gerenciador_buffers = GerenciadorBuffers()
         self.gerenciador_buffers.configurar_a_partir_do_dict(self.config)
 
+        # Suporte automático para carregar variáveis de arquivo .env local caso exista (zero dependências)
+        for dir_busca in [DIRETORIO_ATUAL, os.getcwd(), os.path.dirname(DIRETORIO_ATUAL)]:
+            caminho_env = os.path.join(dir_busca, ".env")
+            if os.path.isfile(caminho_env):
+                try:
+                    with open(caminho_env, "r", encoding="utf-8") as fe:
+                        for linha in fe:
+                            linha = linha.strip()
+                            if not linha or linha.startswith("#") or "=" not in linha:
+                                continue
+                            k, v_val = linha.split("=", 1)
+                            k = k.strip()
+                            v_val = v_val.strip().strip("'\"")
+                            if k not in os.environ:
+                                os.environ[k] = v_val
+                    break
+                except Exception:
+                    pass
+
         # 2. Configuração do Controlador V4
-        cfg_ctrl = self.config.get("controle", {})
+        cfg_ctrl = dict(self.config.get("controle", {}))
+
+        # Função auxiliar para buscar variável de ambiente (case-insensitive e múltiplos apelidos)
+        def _get_env(*keys: str) -> Optional[str]:
+            for key in keys:
+                if key.upper() in os.environ:
+                    return os.environ[key.upper()]
+                if key.lower() in os.environ:
+                    return os.environ[key.lower()]
+                if key in os.environ:
+                    return os.environ[key]
+            return None
+
+        # Prioridade 1: Suporte a JSON completo em ENV (CONFIG_CONTROLE_JSON ou CONTROLE_JSON)
+        env_ctrl_json = _get_env("CONFIG_CONTROLE_JSON", "CONTROLE_JSON")
+        if env_ctrl_json:
+            try:
+                override_ctrl = json.loads(env_ctrl_json)
+                if isinstance(override_ctrl, dict):
+                    # Normaliza as chaves do JSON para minúsculas
+                    override_norm = {str(k).lower(): v for k, v in override_ctrl.items()}
+                    cfg_ctrl.update(override_norm)
+                    logger.info("⚙️ Bloco 'controle' sobrescrito via variável de ambiente JSON (ENV).")
+            except Exception as e:
+                logger.error(f"⚠️ Erro ao decodificar JSON da variável de ambiente: {e}. Mantendo config_opc_v4.json.")
+
+        # Prioridade 2: Suporte a variáveis individuais (tanto MAIÚSCULAS quanto minúsculas, aceita sinônimos)
+        v = _get_env("CICLO_CONTROLE_S")
+        if v is not None:
+            cfg_ctrl["ciclo_controle_s"] = float(v)
+        v = _get_env("TEMPO_RAMPA_SUBIDA_S")
+        if v is not None:
+            cfg_ctrl["tempo_rampa_subida_s"] = float(v)
+        v = _get_env("TEMPO_RAMPA_DESCIDA_S")
+        if v is not None:
+            cfg_ctrl["tempo_rampa_descida_s"] = float(v)
+        v = _get_env("BANDA_MORTA_CPH")
+        if v is not None:
+            cfg_ctrl["banda_morta_cph"] = float(v)
+        v = _get_env("FATOR_SPRINT")
+        if v is not None:
+            cfg_ctrl["fator_sprint"] = float(v)
+        v = _get_env("MARGEM_SPRINT_B2_LIGA")
+        if v is not None:
+            cfg_ctrl["margem_sprint_b2_liga"] = float(v)
+        v = _get_env("MARGEM_SPRINT_B2_DESLIGA")
+        if v is not None:
+            cfg_ctrl["margem_sprint_b2_desliga"] = float(v)
+        v = _get_env("TEMPO_MINIMO_SPRINT_S")
+        if v is not None:
+            cfg_ctrl["tempo_minimo_sprint_s"] = float(v)
+        v = _get_env("MODO_SOMBRA", "SOMBRA")
+        if v is not None:
+            cfg_ctrl["modo_sombra"] = v.strip().lower() in ["true", "1", "yes", "ativado", "sim"]
+        v = _get_env(
+            "ESCREVER_HEARTBEAT_MODO_SOMBRA",
+            "ESCREVER_HB_MODO_SOMBRA",
+            "HEARTBEAT_MODO_SOMBRA",
+            "HB_MODO_SOMBRA",
+            "ESCREVER_HEARTBEAT",
+            "HABILITAR_HEARTBEAT"
+        )
+        if v is not None:
+            cfg_ctrl["escrever_heartbeat_modo_sombra"] = v.strip().lower() in ["true", "1", "yes", "ativado", "sim"]
+
         cfg_maq = self.config.get("maquinas", {})
 
         # Herança automática do Otimizador já rodado (parametros_controle_v4.json)
@@ -313,7 +397,7 @@ class ClienteOPCV4:
         else:
             self.vel_nom = 94500.0
 
-        # Herança de rampas e banda morta caso não estejam no config_opc_v4.json
+        # Herança de rampas e banda morta caso não estejam no config_opc_v4.json ou ENV
         rampa_sub_ia = params_ia.get("tempo_rampa_subida_s", 10.0)
         rampa_desc_ia = params_ia.get("tempo_rampa_descida_s", 8.0)
         banda_morta_ia = params_ia.get("banda_morta_cph", 300.0)
@@ -322,38 +406,43 @@ class ClienteOPCV4:
         self.arquivo_eventos = os.path.join(DIRETORIO_ATUAL, cfg_ctrl.get("arquivo_eventos_json", "eventos_motivos_live_v4.json"))
 
         # Modo Sombra (Segurança operacional Fail-Safe: True por padrão)
-        env_sombra = os.environ.get("MODO_SOMBRA", "").strip().lower()
-        if env_sombra in ["false", "0", "no", "desativado"]:
-            modo_sombra_env = False
-        elif env_sombra in ["true", "1", "yes", "ativado"]:
-            modo_sombra_env = True
-        else:
-            modo_sombra_env = None
-
-        cfg_sombra_json = bool(cfg_ctrl.get("modo_sombra", True))
-
+        cfg_sombra = bool(cfg_ctrl.get("modo_sombra", True))
         if modo_sombra is not None:
             self.modo_sombra = bool(modo_sombra)
-        elif modo_sombra_env is not None:
-            self.modo_sombra = bool(modo_sombra_env)
         else:
-            self.modo_sombra = cfg_sombra_json
-        self.escrever_hb_sombra = bool(cfg_ctrl.get("escrever_heartbeat_modo_sombra", False))
+            self.modo_sombra = cfg_sombra
+
+        cfg_hb_sombra = bool(cfg_ctrl.get("escrever_heartbeat_modo_sombra", False))
+        if escrever_hb_sombra is not None:
+            self.escrever_hb_sombra = bool(escrever_hb_sombra)
+        else:
+            self.escrever_hb_sombra = cfg_hb_sombra
 
         fator_sprint_cfg = float(cfg_ctrl.get("fator_sprint", params_ia.get("fator_sprint", 1.038)))
         margem_liga = float(cfg_ctrl.get("margem_sprint_b2_liga", 15.0))
         margem_desliga = float(cfg_ctrl.get("margem_sprint_b2_desliga", 5.0))
         t_min_sprint = float(cfg_ctrl.get("tempo_minimo_sprint_s", 30.0))
 
+        rampa_sub = float(cfg_ctrl.get("tempo_rampa_subida_s", rampa_sub_ia))
+        rampa_desc = float(cfg_ctrl.get("tempo_rampa_descida_s", rampa_desc_ia))
+        banda_morta = float(cfg_ctrl.get("banda_morta_cph", banda_morta_ia))
+
         self.controlador = ControladorVelocidadeV4(
             velocidade_nominal=self.vel_nom,
-            tempo_rampa_subida_s=cfg_ctrl.get("tempo_rampa_subida_s", rampa_sub_ia),
-            tempo_rampa_descida_s=cfg_ctrl.get("tempo_rampa_descida_s", rampa_desc_ia),
-            banda_morta_cph=cfg_ctrl.get("banda_morta_cph", banda_morta_ia),
+            tempo_rampa_subida_s=rampa_sub,
+            tempo_rampa_descida_s=rampa_desc,
+            banda_morta_cph=banda_morta,
             fator_sprint=fator_sprint_cfg,
             margem_sprint_b2_liga=margem_liga,
             margem_sprint_b2_desliga=margem_desliga,
             tempo_minimo_sprint_s=t_min_sprint
+        )
+
+        logger.info(
+            f"⚙️ Parâmetros de controle ativos: ciclo={self.ciclo_controle_s}s, "
+            f"rampa_sub={rampa_sub}s, rampa_desc={rampa_desc}s, banda_morta={banda_morta:.0f} CPH, "
+            f"fator_sprint={fator_sprint_cfg:.3f}, b2_liga=+{margem_liga:.1f}%, b2_desliga=+{margem_desliga:.1f}%, "
+            f"t_min_sprint={t_min_sprint:.1f}s, modo_sombra={self.modo_sombra}, hb_sombra={self.escrever_hb_sombra}"
         )
 
         # 3. Estado interno compartilhado
@@ -487,6 +576,21 @@ class ClienteOPCV4:
         else:
             logger.warning("Nenhuma tag válida encontrada para subscrição.")
 
+    async def _escrever_valor_node(self, node, val: ua.Variant):
+        """
+        Escreve o valor no nó OPC UA de forma compatível com CLPs e servidores industriais.
+        Evita o erro 'BadWriteNotSupported' enviando puramente o atributo Valor
+        (sem timestamps nem StatusCode, já que o CLP não aceita timestamp de clientes).
+        """
+        try:
+            dv = ua.DataValue(Value=val, StatusCode_=None, SourceTimestamp=None, ServerTimestamp=None)
+            await node.write_attribute(ua.AttributeIds.Value, dv)
+        except Exception as e:
+            if "BadWriteNotSupported" in str(e) or "BadWrite" in str(e):
+                await node.write_value(val)
+            else:
+                raise
+
     async def _loop_heartbeat(self):
         """Loop paralelo e independente para manter o watchdog do CLP vivo."""
         cfg_hb = self.config.get("heartbeat", {})
@@ -538,7 +642,7 @@ class ClienteOPCV4:
                         else:
                             val_escrever = ua.Variant(1, ua.VariantType.Int16)
 
-                    await node_hb.write_value(val_escrever)
+                    await self._escrever_valor_node(node_hb, val_escrever)
                     falhas_consecutivas = 0
             except (ConnectionError, BrokenPipeError, OSError, asyncio.TimeoutError) as e:
                 logger.error(f"Conexão perdida durante envio do Heartbeat: {e}")
@@ -594,7 +698,7 @@ class ClienteOPCV4:
             else:
                 val_escrever = ua.Variant(float(round(val_escrever_num, 2)), ua.VariantType.Double)
 
-            await node_sp.write_value(val_escrever)
+            await self._escrever_valor_node(node_sp, val_escrever)
             logger.info(f"[CLP] Setpoint escrito com sucesso: {texto_unidade} na tag '{tag_sp}'")
         except (ConnectionError, BrokenPipeError, OSError, asyncio.TimeoutError) as e:
             logger.error(f"Erro fatal de conexão ao escrever Setpoint de velocidade: {e}")
@@ -804,6 +908,7 @@ def main():
     parser.add_argument("--influx-url", default=None, help="Sobrescreve a URL base do InfluxDB direto (ex: http://localhost:8086)")
     parser.add_argument("--database", "--bucket", default=None, help="Sobrescreve o banco/database do InfluxDB (ex: Segue)")
     parser.add_argument("--grafana-url", default=None, help="Sobrescreve a URL base do Grafana (fallback secundário)")
+    parser.add_argument("--escrever-hb-sombra", "--escrever-heartbeat-sombra", "--hb-sombra", "--habilitar-hb", action="store_true", default=None, help="Habilita escrita de watchdog heartbeat no CLP mesmo em modo sombra")
     parser.add_argument("--sem-influx", "--sem-grafana", "--sem-telemetria", dest="sem_telemetria", action="store_true", default=False, help="Desativa o envio de telemetria")
     args = parser.parse_args()
 
@@ -835,6 +940,7 @@ def main():
     cliente = ClienteOPCV4(
         caminho_config=args.config,
         modo_sombra=modo_sombra,
+        escrever_hb_sombra=args.escrever_hb_sombra,
         telemetria_override=telemetria_override if telemetria_override else None
     )
     try:

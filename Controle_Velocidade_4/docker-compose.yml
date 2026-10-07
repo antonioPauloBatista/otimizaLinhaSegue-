@@ -9,7 +9,8 @@ services:
     restart: always
     environment:
       - PYTHONUNBUFFERED=1
-      - MODO_SOMBRA=true       # Padrão seguro: Apenas Leitura (sem escrita no CLP)
+      - MODO_SOMBRA=${MODO_SOMBRA:-true}       # Padrão seguro: Apenas Leitura (sem escrita no CLP)
+      - ESCREVER_HEARTBEAT_MODO_SOMBRA=${ESCREVER_HEARTBEAT_MODO_SOMBRA:-false}
     deploy:
       resources:
         limits:

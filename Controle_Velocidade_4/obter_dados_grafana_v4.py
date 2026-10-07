@@ -6,7 +6,7 @@ Conecta na API do Grafana (proxy InfluxDB), extrai as séries temporais da linha
 reconstrói o DataFrame no formato tabular wide padronizado (com Timestamp) e salva
 o arquivo CSV no formato exato esperado pelo otimizador matemático (CMA-ES).
 
-Gerado automaticamente pelo modelo V4 em: 2026-09-29 17:13:07
+Gerado automaticamente pelo modelo V4 em: 2026-10-05 19:04:52
 Linha Alvo: 512 | Measurement: 512 | Bucket: Segue
 """
 

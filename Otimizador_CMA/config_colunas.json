@@ -13,7 +13,5 @@
   "Fator_Sobremarcha": 1.0,
   "Min_Modulacao": 0.8,
   "Max_Modulacao": 1.0,
-  "Limite_Parada_Falta": 25.0,
-  "Limite_Parada_Acumulo": 75.0,
   "Histerese": 5.0
 }

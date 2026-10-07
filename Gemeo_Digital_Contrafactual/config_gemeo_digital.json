@@ -1,0 +1,45 @@
+{
+  "identificacao_linha": {
+    "linha": "512",
+    "fabrica": "Equatorial",
+    "nome_montante": "DPL512001",
+    "nome_principal": "ECH512001",
+    "nome_jusante": "PZ512001"
+  },
+  "servidor_opc": {
+    "url": "opc.tcp://10.46.12.163:49500",
+    "usuario": "",
+    "senha": "",
+    "timeout_s": 5.0,
+    "reconectar_delay_s": 3.0,
+    "publishing_interval_ms": 500
+  },
+  "maquinas": {
+    "tag_velocidade_montante": "ns=2;s=L512_DPL512001.DPL512001.LMS.DPL512001_S",
+    "tag_velocidade_atual": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_S",
+    "tag_velocidade_jusante": "ns=2;s=L512_PZ512001.PZ512001.LMS.PZ512001_S",
+    "tag_status_maquina": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_STATUS",
+    "tag_sensor_acumulo_saida": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.ECH-PZ.125B3",
+    "tag_sensor_falta_entrada": "ns=2;s=L512_TRP512002.TRP512001.SEGUE.DPL-ECH.102B2",
+    "velocidade_nominal": 90000.0
+  },
+  "parametros_legado": {
+    "tempo_rampa_subida_s": 15.0,
+    "tempo_rampa_descida_s": 8.0,
+    "limiar_corte_b3_pct": 85.0,
+    "limiar_retomada_b3_pct": 65.0,
+    "limiar_corte_b2_pct": 15.0,
+    "limiar_retomada_b2_pct": 35.0,
+    "ton_bloqueio_s": 2.0,
+    "ton_retomada_s": 2.0,
+    "tempo_ancoragem_parada_real_s": 300.0
+  },
+  "buffers_capacidade": {
+    "capacidade_garrafas_b2": 2800.0,
+    "capacidade_garrafas_b3": 3500.0
+  },
+  "auditoria_envase": {
+    "volume_garrafa_litros": 0.355,
+    "horas_disponiveis_turno": 8.0
+  }
+}
