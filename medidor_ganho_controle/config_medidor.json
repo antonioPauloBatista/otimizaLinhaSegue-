@@ -1,0 +1,23 @@
+{
+  "modo": "online-grafana",
+
+  "dados_grafana": {
+    "url": "http://10.186.99.7:3000",
+    "user": "admin",
+    "password": "!ambev2021",
+    "datasource": "4",
+    "bucket": "soda",
+    "measurement": "512_v4",
+    "coluna_velocidade_real": "v_atual_cph",
+    "coluna_trava_entrada": "trava_entrada_int",
+    "coluna_segue_habilitado": "segue_habilitado",
+    "coluna_buffer_entrada_b2": "b2_pct",
+    "coluna_buffer_saida_b3": "b3_pct"
+  },
+
+  "dados_calculo_analises": {
+    "trava_filtro": "0",
+    "limiar_buffer_saida_gargalo_pct": 74.37,
+    "limiar_buffer_entrada_min_pct": 30.05
+  }
+}

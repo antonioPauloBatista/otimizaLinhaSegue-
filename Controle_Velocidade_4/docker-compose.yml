@@ -11,6 +11,9 @@ services:
       - PYTHONUNBUFFERED=1
       - MODO_SOMBRA=${MODO_SOMBRA:-true}       # Padrão seguro: Apenas Leitura (sem escrita no CLP)
       - ESCREVER_HEARTBEAT_MODO_SOMBRA=${ESCREVER_HEARTBEAT_MODO_SOMBRA:-false}
+      - ALPHA_EWMA=${ALPHA_EWMA:-0.25}         # Fator de amortecimento EWMA dos buffers
+      - TEMPO_RAMPA_SUBIDA_S=${TEMPO_RAMPA_SUBIDA_S:-30.0}   # Rampa de aceleração em segundos
+      - TEMPO_RAMPA_DESCIDA_S=${TEMPO_RAMPA_DESCIDA_S:-10.0} # Rampa de desaceleração em segundos
     deploy:
       resources:
         limits:

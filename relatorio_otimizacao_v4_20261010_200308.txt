@@ -1,0 +1,37 @@
+===========================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE V4: BALANÇO + MOTIVOS   
+===========================================================================
+➔ Produção Real Registrada no Histórico : 39,677,218 unidades.
+➔ Produção Simulada Otimizada V4       : 63,238,378 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO (V4)       : +23,561,160 unidades (+59.38%)
+
+[MÉTRICAS DE PARADAS E ESTABILIDADE DE PROCESSO]
+➔ Amostras em Risco de Soco Mecânico no Histórico : 7590
+➔ Amostras em Risco na Simulação Otimizada V4      : 1
+➔ Amostras Críticas Evitadas                       : 7589 (100.0% de melhoria)
+➔ Tempo Extra de Uptime Recuperado                : 63h 14min
+
+[DISTRIBUIÇÃO DOS MOTIVOS DE OPERAÇÃO NO HISTÓRICO]
+   ↳ [ID  0 - NORMAL_FULL               ]:  39900 amostras ( 40.6%) | Velocidade Nominal (100%) - Fluxo Normal
+   ↳ [ID  1 - SPRINT_SOBREVELOCIDADE    ]:  17908 amostras ( 18.2%) | Sobrevelocidade / Sprint (> 100%) - Linha Desimpedida
+   ↳ [ID 20 - ACUMULO_SAIDA_B3          ]:  13499 amostras ( 13.8%) | Acúmulo de Garrafas no Buffer de Saída (B3 Enchedora-Pasteurizador)
+   ↳ [ID 10 - FALTA_ENTRADA_B2          ]:   6610 amostras (  6.7%) | Falta de Garrafas no Buffer de Entrada (B2 ECI-Enchedora)
+   ↳ [ID 91 - PARADA_INTERTRAV_ENTRADA_ECI]:   5236 amostras (  5.3%) | Parada Crítica do CLP por Falta de Garrafas na Entrada (B2 <= 10%)
+   ↳ [ID 25 - RETOMADA_ACELERANDO_SAIDA ]:   4810 amostras (  4.9%) | Saída com Acúmulo, mas Máquina da Saída Acelerando (Retomada Sincronizada)
+   ↳ [ID 99 - PARADA_PROPRIA_ENCHEDORA  ]:   4496 amostras (  4.6%) | Parada Local da Enchedora (Falha Mecânica / Elétrica / Operador / Cacos / Válvulas com Linha Apta)
+   ↳ [ID 80 - MAQUINA_SAIDA_LENTA       ]:   3459 amostras (  3.5%) | Balanço de Massa: Máquina da Saída (Pasteurizador) operando em velocidade reduzida
+   ↳ [ID 92 - PARADA_INTERTRAV_SAIDA_PASTEURIZADOR]:   1659 amostras (  1.7%) | Parada Crítica do CLP por Acúmulo de Garrafas na Saída (B3 >= 90%)
+   ↳ [ID 30 - CONFLITO_ENTRADA_SAIDA    ]:    530 amostras (  0.5%) | Duplo Conflito: Falta na Entrada (B2) e Acúmulo na Saída (B3) simultâneos
+   ↳ [ID 60 - LIMITADOR_RAMPA_MECANICA  ]:     60 amostras (  0.1%) | Transição em Rampa Suave Limitada pelo Slew Rate Mecânico
+
+[PARÂMETROS OTIMIZADOS V4]
+➔ Velocidade Nominal Enchedora: 90,000 CPH
+➔ Piso de Modulação Seguro     : 85.0% (76,500 CPH)
+➔ Teto Sprint / Sobrevelocidade: 105.0% (94,500 CPH)
+➔ Rampa Mecânica Máxima (Slew) : 1000 CPH por passo de 30s (33.3 CPH/s)
+➔ Gatilho Falta Entrada (B2)   : < 28.2% (Rampa: 19.1%)
+➔ Gatilho Acúmulo Saída (B3)   : > 74.1% (Rampa: 16.5%)
+➔ Feedforward Extremo B1       : [Desativado / Topologia sem B1]
+➔ Feedforward Extremo B4       : > 90.0% (Margem: 10.2%)
+➔ Fator Retomada Sincronizada  : 10.0% de alívio quando a jusante está acelerando
+===========================================================================

@@ -735,7 +735,65 @@ def test_trava_sprint_bloqueio_velocidade_rebaixada():
     assert ctrl_tol.sprint_ativo is True, "Flutuação normal de tacômetro (98.6%) não deveria bloquear Sprint!"
     print(f"  ✅ Tolerância de Tacômetro OK: Leitura de 59.200 CPH (98.6%) autoriza Sprint normalmente.")
 
+def test_topologia_sem_b1_sprint_desbloqueado():
+    """Valida que quando tem_b1=False, o Sprint funciona perfeitamente sem âncora de B1."""
+    print("Testando Topologia de 3 Buffers (tem_b1=False) com Sprint Desbloqueado...")
+    ctrl_3b = ControladorVelocidadeV4(
+        velocidade_nominal=90000,
+        v_atual_inicial=90000,
+        fator_sprint=1.05
+    )
+    assert ctrl_3b.tem_b1 is False, "Controlador padrão da Linha 512 deveria estar com tem_b1=False"
+    assert ctrl_3b.b1_lim is None, "b1_lim deveria ser None quando tem_b1=False"
+
+    # Testa com B1=0, B1=50 e B1=None: nenhum deles deve ancorar a velocidade
+    for b1_val in [0.0, 50.0, 100.0]:
+        v, m = ctrl_3b.calcular_velocidade(
+            b1=b1_val, b2=85.0, b3=15.0, b4=20.0,
+            v_in=90000, v_out=90000, v_atual=90000, delta_t_s=10.0
+        )
+        assert abs(v - 94500.0) < 1.0, f"Com B1={b1_val}, velocidade deveria ser 94500 CPH, obtido {v}"
+        assert m == 1, f"Com B1={b1_val}, motivo deveria ser 1 (Sprint), obtido {m}"
+
+    print("  ✅ Topologia 3 Buffers OK: B1 não interfere no cálculo e Sprint atinge 94.500 CPH (105%).")
+
+def test_alternancia_topologia_3_vs_4_buffers():
+    """Valida que a classe suporta tanto 3 buffers quanto 4 buffers de forma transparente."""
+    print("Testando Alternância Transparente 3 Buffers vs 4 Buffers...")
+    ctrl_4b = ControladorVelocidadeV4(
+        velocidade_nominal=90000,
+        v_atual_inicial=90000,
+        fator_sprint=1.05
+    )
+    ctrl_4b.tem_b1 = True
+    ctrl_4b.b1_lim = 30.0
+    ctrl_4b.antecip_b1 = 30.0
+
+    # No modo 4 buffers, se B1 estiver esvaziando e a alimentação cair, B1 atua:
+    v_4b, m_4b = ctrl_4b.calcular_velocidade(
+        b1=10.0, b2=80.0, b3=20.0, b4=20.0,
+        v_in=60000, v_out=90000, v_atual=90000, delta_t_s=10.0
+    )
+    assert v_4b < 90000, f"Em 4 buffers com B1 baixo e V_in baixo, deveria modular abaixo da nominal: {v_4b}"
+    print(f"  ✅ Modo 4 Buffers OK: B1 crítico atua protegendo a linha (V={v_4b:.0f} CPH).")
+
+    # No modo 3 buffers, a mesma condição NÃO restringe a enchedora porque B1 não existe:
+    ctrl_3b = ControladorVelocidadeV4(
+        velocidade_nominal=90000,
+        v_atual_inicial=90000,
+        fator_sprint=1.05
+    )
+    ctrl_3b.tem_b1 = False
+    v_3b, m_3b = ctrl_3b.calcular_velocidade(
+        b1=10.0, b2=80.0, b3=20.0, b4=20.0,
+        v_in=90000, v_out=90000, v_atual=90000, delta_t_s=10.0
+    )
+    assert abs(v_3b - 94500.0) < 1.0, f"Em 3 buffers, B1 não deve restringir a linha: {v_3b}"
+    print(f"  ✅ Modo 3 Buffers OK: B1 inexistente ignorado, Sprint livre a 94.500 CPH.")
+
 if __name__ == "__main__":
+    test_topologia_sem_b1_sprint_desbloqueado()
+    test_alternancia_topologia_3_vs_4_buffers()
     test_sincronizacao_estrita_fator_sobremarcha()
     test_slew_rate_e_motivo()
     test_tempo_rampa_segundos_base_nominal_sem_sprint()

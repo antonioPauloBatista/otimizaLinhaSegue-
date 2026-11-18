@@ -27,27 +27,30 @@ class ControladorVelocidadeV4:
                  banda_morta_cph=300.0,
                  fator_sprint=None,
                  margem_sprint_b2_liga=15.0,
-                 margem_sprint_b2_desliga=5.0,
-                 tempo_minimo_sprint_s=30.0):
+                 margem_sprint_b2_desliga=8.7,
+                 tempo_minimo_sprint_s=0.0,
+                 alpha_ewma=None,
+                 min_mod=None):
         # A velocidade de referência para o tempo de rampa mecânica é a Velocidade Máxima Nominal (vel_nom).
         # Conforme diretriz de automação e segurança: NUNCA se utiliza a sobremarcha/sprint como base da rampa.
         self.vel_nom = float(velocidade_nominal)
-        self.b1_lim = __B1_OPT__
+        self.tem_b1 = bool(__TEM_B1__)
+        self.b1_lim = float(__B1_OPT__) if self.tem_b1 and __B1_OPT__ is not None else None
         self.b2_lim = __B2_OPT__
         self.b3_lim = __B3_OPT__
         self.b4_lim = __B4_OPT__
         self.rampa_b2 = __RAMPA_B2_OPT__
         self.rampa_b3 = __RAMPA_B3_OPT__
-        self.antecip_b1 = __ANTECIP_B1_OPT__
+        self.antecip_b1 = float(__ANTECIP_B1_OPT__) if self.tem_b1 and __ANTECIP_B1_OPT__ is not None else None
         self.antecip_b4 = __ANTECIP_B4_OPT__
-        self.min_mod = __MIN_MOD_OPT__
+        self.min_mod = float(min_mod) if min_mod is not None else __MIN_MOD_OPT__
         self.peso_retomada = __PESO_RETOMADA_OPT__
         self.fator_sprint = float(fator_sprint) if fator_sprint is not None else float(__FATOR_SPRINT_OPT__)
         self.margem_sprint_b2_liga = float(margem_sprint_b2_liga)
         self.margem_sprint_b2_desliga = float(margem_sprint_b2_desliga)
         self.tempo_minimo_sprint_s = float(tempo_minimo_sprint_s)
         self.banda_morta = float(banda_morta_cph)
-        self.alpha_ewma = __ALPHA_EWMA__
+        self.alpha_ewma = float(alpha_ewma) if alpha_ewma is not None else __ALPHA_EWMA__
 
         # Estado da Histerese e Anti-Hunting do Sprint
         self.sprint_ativo = False
@@ -295,7 +298,16 @@ class ControladorVelocidadeV4:
         b3_normal = rampa_trapezoidal(self.b3_f, -1, 0, self.b3_lim, self.b3_lim + self.rampa_b3)
         b3_alto   = rampa_trapezoidal(self.b3_f, self.b3_lim, self.b3_lim + self.rampa_b3, 100, 101)
 
-        b1_alerta = rampa_trapezoidal(self.b1_f, -1, 0, self.b1_lim, self.b1_lim + self.antecip_b1)
+        if self.tem_b1 and self.b1_lim is not None and self.antecip_b1 is not None:
+            # Balanço de massa e alimentação a montante (simétrico a B4):
+            # Se a máquina de entrada (v_in) está alimentando normalmente e B2 está saudável,
+            # B1 não deve estrangular a Enchedora preventivamente.
+            deficit_alimentacao_entrada = max(0.0, min(1.0, (v_nom - v_in) / (0.25 * v_nom))) if v_in < v_nom else 0.0
+            alerta_b1_puro = rampa_trapezoidal(self.b1_f, -1, 0, self.b1_lim, self.b1_lim + self.antecip_b1)
+            b1_alerta = alerta_b1_puro * deficit_alimentacao_entrada if self.b2_f > self.b2_lim else alerta_b1_puro
+        else:
+            b1_alerta = 0.0
+
         b4_alerta = rampa_trapezoidal(self.b4_f, self.b4_lim - self.antecip_b4, self.b4_lim, 100, 101)
 
         # Balanço de massa e capacidade de escoamento na saída:
@@ -318,9 +330,11 @@ class ControladorVelocidadeV4:
         w_ff_b4 = b4_alerta * deficit_escoamento_saida if self.b3_f < 75.0 else b4_alerta
 
         # Condição de Sprint / Sobrevelocidade com Histerese e Anti-Hunting (desacoplada de v_in):
-        # 1. Limiares dinâmicos vinculados à calibração de b2_lim
+        # 1. Limiares dinâmicos vinculados à calibração de b2_lim e b3_lim:
         b2_liga = min(60.0, max(38.0, self.b2_lim + self.margem_sprint_b2_liga))
         b2_desliga = max(28.0, self.b2_lim + self.margem_sprint_b2_desliga)
+        b3_liga = max(50.0, self.b3_lim - 8.0)
+        b3_desliga = min(80.0, self.b3_lim - 1.0)
 
         # TRAVA DE SEGURANÇA OPERACIONAL: INTERTRAVAMENTO DE SPRINT POR VELOCIDADE DA ENCHEDORA
         # Regra Inegociável de Fábrica:
@@ -334,13 +348,13 @@ class ControladorVelocidadeV4:
         # Condição de entrada no Sprint (Buffer de entrada folgado, saída livre, pasteurizador pleno e enchedora a 100% nominal):
         cond_entrada_sprint = (
             (self.b2_f >= b2_liga) and
-            (self.b3_f <= (self.b3_lim - 5.0)) and
+            (self.b3_f <= b3_liga) and
             (v_out >= 0.85 * v_nom) and
             (not trava_sprint_bloqueado)
         )
 
         # Condição crítica de desativação imediata (segurança de processo):
-        # Desliga se buffers entrarem em zona de perigo, saída desacelerar ou enchedora cair abaixo de 95% nominal
+        # Desliga se buffers consolidados entrarem em zona de perigo, saída desacelerar ou enchedora cair abaixo de 95% nominal
         cond_corte_imediato = (
             (self.b2_f <= self.b2_lim) or
             (self.b3_f >= self.b3_lim) or
@@ -356,19 +370,25 @@ class ControladorVelocidadeV4:
             self.tempo_em_sprint_s += float(delta_t_s)
             cond_saida_histerese = (
                 (self.b2_f < b2_desliga) or
-                (self.b3_f > (self.b3_lim - 5.0)) or
+                (self.b3_f > b3_desliga) or
                 (v_out < 0.85 * v_nom) or
                 (v_maquina < 0.98 * v_nom)
             )
-            if cond_corte_imediato or cond_saida_histerese:
+            # Desativação imediata para emergências críticas de processo (buffer vazio, saída entupida, desaceleração drástica).
+            # Para desativação por histerese normal de B2/B3/v_out, se tempo_minimo_sprint_s > 0, exige o cumprimento do tempo mínimo de permanência (evita oscilação de 10-20s).
+            if cond_corte_imediato or (cond_saida_histerese and self.tempo_em_sprint_s >= self.tempo_minimo_sprint_s):
                 self.sprint_ativo = False
                 self.tempo_em_sprint_s = 0.0
 
         w_sprint = 1.0 if self.sprint_ativo else 0.0
         w_normal = min(b2_normal, b3_normal) * (1.0 - w_sprint)
 
-        num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (b1_alerta * v_reduz) + (w_ff_b4 * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
-        den = b2_baixo + w_saida_cheia + w_retomada + b1_alerta + w_ff_b4 + w_normal + w_sprint
+        num = (b2_baixo * v_reduz) + (w_saida_cheia * v_reduz) + (w_retomada * v_nom) + (w_ff_b4 * v_reduz) + (w_normal * v_nom) + (w_sprint * v_sprint)
+        den = b2_baixo + w_saida_cheia + w_retomada + w_ff_b4 + w_normal + w_sprint
+        if self.tem_b1 and b1_alerta > 0.0:
+            num += (b1_alerta * v_reduz)
+            den += b1_alerta
+
         v_alvo = v_nom if den == 0 else num / den
         v_teto_sprint = v_nom if trava_sprint_bloqueado else v_sprint
         v_alvo = max(v_reduz, min(v_teto_sprint, v_alvo))

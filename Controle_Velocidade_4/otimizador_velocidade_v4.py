@@ -27,50 +27,59 @@ import matplotlib.dates as mdates
 # =====================================================================
 # 1. CARREGAMENTO DE CONFIGURAÇÕES E DADOS
 # =====================================================================
-ARQUIVO_CSV = "dados_completos_fabrica.csv"
-ARQUIVO_CONFIG = "config_colunas.json"
-ARQUIVO_MOTIVOS = "motivos_modulacao_enum.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+ARQUIVO_CSV = os.path.join(BASE_DIR, "dados_completos_fabrica.csv")
+ARQUIVO_CONFIG = os.path.join(BASE_DIR, "config_colunas.json")
+ARQUIVO_MOTIVOS = os.path.join(BASE_DIR, "motivos_modulacao_enum.json")
 
 MIN_MODULACAO = 0.75
 MAX_MODULACAO = 1.00
-VELOCIDADE_NOMINAL_ECH = 60000.0
+VELOCIDADE_NOMINAL_ECH = 90000.0
 LIMIAR_VELOCIDADE_MANUTENCAO = 30000.0
 MAX_RAMPA_CPH_PASSO = 1000.0   # CPH por ciclo (ex: 30s) legado
-TEMPO_RAMPA_SUBIDA_S = 15.0    # Segundos para ir de 0 a 100% nominal (ex: 15s)
+TEMPO_RAMPA_SUBIDA_S = 10.0    # Segundos para ir de 0 a 100% nominal (ex: 10s)
 TEMPO_RAMPA_DESCIDA_S = 8.0    # Segundos para ir de 100% nominal a 0 (ex: 8s)
 PCT_RAMPA_SUBIDA = 0.017       # Legado
 PCT_RAMPA_DESCIDA = 0.042      # Legado
-FATOR_SOBREMARCHA = 1.02
+FATOR_SOBREMARCHA = 1.05
 ALPHA_FILTRO_BUFFER = 0.65
 JANELA_MEDIANA = 3
 FILTRO_MINUTOS_PARADA_LONGA = 10
 BANDA_MORTA_CPH = 300.0
 
-COL_B1_DPL_UIP = "accumulation_percentage_pre_eci_null"
-COL_B2_UIP_ECH = "accumulation_percentage_eci_to_filler_null"
-COL_B3_ECH_PZ  = "accumulation_percentage_filler_to_pasteurizer_null"
-COL_B4_PZ_EPC  = "accumulation_percentage_post_pasteurizer_null"
+COL_B1_DPL_UIP = ""
+COL_B2_UIP_ECH = "accumulation_percentage_dpl_to_ech_null"
+COL_B3_ECH_PZ  = "accumulation_percentage_ech_to_pz_null"
+COL_B4_PZ_EPC  = "accumulation_percentage_pz_to_epc_null"
 
-COL_V_MONTANTE = "speed_actual_cph_null_first_upstream_machine_1"
-COL_V_ENTRADA  = "speed_actual_cph_null_eci_1"
+COL_V_MONTANTE = ""
+COL_V_ENTRADA  = "speed_actual_cph_null_first_upstream_machine_1"
 COL_V_ECH      = "speed_actual_cph_null_filler_1"
 COL_V_SAIDA    = "speed_actual_cph_null_pasteurizer"
-COL_V_JUSANTE  = "speed_actual_cph_null_first_downstream_machine_1,speed_actual_cph_null_first_downstream_machine_2"
+COL_V_JUSANTE  = "speed_actual_cph_null_first_downstream_machine_1"
 
 # Limpeza de relatórios antigos na pasta
-for f_antigo in glob.glob("relatorio_otimizacao_v4_*.txt"):
+for f_antigo in glob.glob(os.path.join(BASE_DIR, "relatorio_otimizacao_v4_*.txt")):
     try: os.remove(f_antigo)
     except Exception: pass
 
-if os.path.exists("graficos_velocidade_otimizada_v4"):
-    try: shutil.rmtree("graficos_velocidade_otimizada_v4")
+pasta_graficos = os.path.join(BASE_DIR, "graficos_velocidade_otimizada_v4")
+if os.path.exists(pasta_graficos):
+    try: shutil.rmtree(pasta_graficos)
     except Exception: pass
 
 if os.path.exists(ARQUIVO_CONFIG):
     try:
         with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-            ARQUIVO_CSV = cfg.get("Arquivo_Dados", ARQUIVO_CSV)
+            csv_nome = cfg.get("Arquivo_Dados", "")
+            if csv_nome:
+                if os.path.isabs(csv_nome):
+                    ARQUIVO_CSV = csv_nome
+                elif os.path.exists(os.path.join(BASE_DIR, csv_nome)):
+                    ARQUIVO_CSV = os.path.join(BASE_DIR, csv_nome)
+                else:
+                    ARQUIVO_CSV = csv_nome
             COL_B1_DPL_UIP = cfg.get("Col_Buffer_Antes_Entrada", COL_B1_DPL_UIP)
             COL_B2_UIP_ECH = cfg.get("Col_Buffer_Entrada", COL_B2_UIP_ECH)
             COL_B3_ECH_PZ  = cfg.get("Col_Buffer_Saida", COL_B3_ECH_PZ)
@@ -167,7 +176,14 @@ def extrair_buffer(col_nome, default_val=50.0):
         return df[col_nome].fillna(default_val).values
     return np.full(len(df), default_val)
 
-b1_raw = extrair_buffer(COL_B1_DPL_UIP, 50.0)
+TEM_B1 = bool(COL_B1_DPL_UIP and COL_B1_DPL_UIP in df.columns)
+if TEM_B1:
+    print(f"✓ Buffer B1 localizado: '{COL_B1_DPL_UIP}' (Modo 4 Buffers ativo)")
+    b1_raw = extrair_buffer(COL_B1_DPL_UIP, 50.0)
+else:
+    print("ℹ️ Linha sem Buffer B1 (Layout de 3 Buffers: B2, B3, B4). Desativando B1 da Lógica Fuzzy e da Otimização.")
+    b1_raw = np.full(len(df), 100.0)
+
 b2_raw = extrair_buffer(COL_B2_UIP_ECH, 50.0)
 b3_raw = extrair_buffer(COL_B3_ECH_PZ, 50.0)
 b4_raw = extrair_buffer(COL_B4_PZ_EPC, 50.0)
@@ -253,17 +269,32 @@ def vec_trapezoidal(x_arr, a, b, c, d):
     return res
 
 def simular_controle_v4(x_params, override_vel_nominal=None):
-    b1_lim = np.clip(x_params[0], 10.0, 30.0)
-    b2_lim = np.clip(x_params[1], 15.0, 45.0)
-    b3_lim = np.clip(x_params[2], 65.0, 80.0)
-    b4_lim = np.clip(x_params[3], 75.0, 90.0)
-    rampa_b2 = np.clip(x_params[4], 10.0, 35.0)
-    rampa_b3 = np.clip(x_params[5], 10.0, 35.0)
-    antecip_b1 = np.clip(x_params[6], 5.0, 30.0)
-    antecip_b4 = np.clip(x_params[7], 5.0, 30.0)
-    min_mod = MIN_MODULACAO  # Respeita estritamente config_colunas.json (ex: 0.75)
-    peso_retomada = np.clip(x_params[9], 0.10, 0.60)
-    fator_sprint = float(FATOR_SOBREMARCHA)  # Respeita estritamente config_colunas.json (ex: 1.038)
+    if TEM_B1:
+        # Modo 9 parâmetros reais (Com B1)
+        b1_lim = np.clip(x_params[0], 10.0, 30.0)
+        b2_lim = np.clip(x_params[1], 15.0, 45.0)
+        b3_lim = np.clip(x_params[2], 65.0, 80.0)
+        b4_lim = np.clip(x_params[3], 75.0, 90.0)
+        rampa_b2 = np.clip(x_params[4], 10.0, 35.0)
+        rampa_b3 = np.clip(x_params[5], 10.0, 35.0)
+        antecip_b1 = np.clip(x_params[6], 5.0, 30.0)
+        antecip_b4 = np.clip(x_params[7], 5.0, 30.0)
+        peso_retomada = np.clip(x_params[8], 0.10, 0.60)
+        min_mod = MIN_MODULACAO  # Parâmetro Mestre Soberano (respeita estritamente config_colunas.json)
+        fator_sprint = float(FATOR_SOBREMARCHA)  # Parâmetro Mestre Soberano (respeita estritamente config_colunas.json)
+    else:
+        # Modo 7 parâmetros reais (Sem B1)
+        b1_lim = 0.0
+        antecip_b1 = 0.0
+        b2_lim = np.clip(x_params[0], 15.0, 45.0)
+        b3_lim = np.clip(x_params[1], 65.0, 80.0)
+        b4_lim = np.clip(x_params[2], 75.0, 90.0)
+        rampa_b2 = np.clip(x_params[3], 10.0, 35.0)
+        rampa_b3 = np.clip(x_params[4], 10.0, 35.0)
+        antecip_b4 = np.clip(x_params[5], 5.0, 30.0)
+        peso_retomada = np.clip(x_params[6], 0.10, 0.60)
+        min_mod = MIN_MODULACAO  # Parâmetro Mestre Soberano (respeita estritamente config_colunas.json)
+        fator_sprint = float(FATOR_SOBREMARCHA)  # Parâmetro Mestre Soberano (respeita estritamente config_colunas.json)
 
     vel_nominal = override_vel_nominal if override_vel_nominal is not None else VELOCIDADE_NOMINAL_ECH
     v_nominal = vel_nominal * MAX_MODULACAO
@@ -277,7 +308,14 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     b3_alto   = vec_trapezoidal(b3_hist, b3_lim, b3_lim + rampa_b3, 100, 101)
 
     # 2. Feedforward Extremo
-    b1_alerta = vec_trapezoidal(b1_hist, -1, 0, b1_lim, b1_lim + antecip_b1)
+    if TEM_B1:
+        # Se tem B1, acopla com déficit de alimentação a montante (simétrico a B4)
+        deficit_alimentacao_entrada = np.where(v_in_real_hist < vel_nominal, np.clip((vel_nominal - v_in_real_hist) / (0.25 * vel_nominal), 0.0, 1.0), 0.0)
+        b1_alerta_puro = vec_trapezoidal(b1_hist, -1, 0, b1_lim, b1_lim + antecip_b1)
+        w_ff_b1 = np.where(b2_hist > b2_lim, b1_alerta_puro * deficit_alimentacao_entrada, b1_alerta_puro)
+    else:
+        w_ff_b1 = np.zeros_like(b2_hist)
+
     b4_alerta = vec_trapezoidal(b4_hist, b4_lim - antecip_b4, b4_lim, 100, 101)
 
     # 3. Balanço de Massa e Tendência de Aceleração da Máquina da Frente
@@ -308,17 +346,20 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
 
     w_entrada_vazia = b2_baixo
     w_normal = np.minimum(b2_normal, b3_normal) * (1.0 - w_sprint)
-    w_ff_b1 = b1_alerta
 
     num = (w_entrada_vazia * v_reduz) + \
           (w_saida_cheia * v_reduz) + \
           (w_retomada_sinc * v_nominal) + \
-          (w_ff_b1 * v_reduz) + \
           (w_ff_b4 * v_reduz) + \
           (w_normal * v_nominal) + \
           (w_sprint * v_sprint)
+    
+    den = w_entrada_vazia + w_saida_cheia + w_retomada_sinc + w_ff_b4 + w_normal + w_sprint
 
-    den = w_entrada_vazia + w_saida_cheia + w_retomada_sinc + w_ff_b1 + w_ff_b4 + w_normal + w_sprint
+    if TEM_B1:
+        num += (w_ff_b1 * v_reduz)
+        den += w_ff_b1
+
     den_safe = np.where(den == 0, 1.0, den)
     v_sug_bruta = np.where(den == 0, v_nominal, num / den_safe)
     v_sug_bruta = np.clip(v_sug_bruta, v_reduz, v_sprint)
@@ -350,11 +391,21 @@ def simular_controle_v4(x_params, override_vel_nominal=None):
     paradas_soco = np.sum((v_otimizada > (vel_nominal * min_mod + 500.0)) & ((b2_hist <= 10.0) | (b3_hist >= 90.0)))
     penalidade_acel = np.sum((np.diff(v_otimizada) / 1000.0) ** 2)
 
-    limites = [
-        (10, 30), (15, 45), (65, 80), (75, 90),
-        (10, 35), (10, 35), (5, 30), (5, 30),
-        (MIN_MODULACAO - 1.0, MIN_MODULACAO + 1.0), (0.10, 0.60), (1.01, 1.05)
-    ]
+    if TEM_B1:
+        # 9 Parâmetros Reais: b1_lim, b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3, antecip_b1, antecip_b4, peso_retomada
+        limites = [
+            (10, 30), (15, 45), (65, 80), (75, 90),
+            (10, 35), (10, 35), (5, 30), (5, 30),
+            (0.10, 0.60)
+        ]
+    else:
+        # 7 Parâmetros Reais: b2_lim, b3_lim, b4_lim, rampa_b2, rampa_b3, antecip_b4, peso_retomada
+        limites = [
+            (15, 45), (65, 80), (75, 90),
+            (10, 35), (10, 35), (5, 30),
+            (0.10, 0.60)
+        ]
+
     penalidade_bounds = 0.0
     for i, val in enumerate(x_params):
         inf, sup = limites[i]
@@ -372,7 +423,7 @@ def obj_cma(params):
 # =====================================================================
 # 4. ALGORITMO DE OTIMIZAÇÃO CMA-ES
 # =====================================================================
-def cma_es(func, x0, sigma0=1.5, max_iter=120, seed=42):
+def cma_es(func, x0, sigma0=1.5, max_iter=150, seed=42):
     rng = np.random.default_rng(seed)
     n = len(x0)
     lam = 4 + int(np.floor(3 * np.log(n)))
@@ -404,7 +455,7 @@ def cma_es(func, x0, sigma0=1.5, max_iter=120, seed=42):
     historico_scores = []
 
     print(f"\n{'='*75}")
-    print(f" INICIANDO OTIMIZAÇÃO CMA-ES V4 | 11 PARÂMETROS | Gerações: {max_iter}")
+    print(f" INICIANDO OTIMIZAÇÃO CMA-ES V4 | {n} PARÂMETROS REAIS | Gerações: {max_iter}")
     print(f"{'='*75}")
 
     for gen in range(max_iter):
@@ -449,19 +500,30 @@ def cma_es(func, x0, sigma0=1.5, max_iter=120, seed=42):
     return melhor_x, melhor_score, historico_scores
 
 # Ponto de Partida Inicial
-x_inicial = np.array([
-    20.0,  # b1_lim
-    30.0,  # b2_lim
-    70.0,  # b3_lim
-    85.0,  # b4_lim
-    20.0,  # rampa_b2
-    20.0,  # rampa_b3
-    15.0,  # antecip_b1
-    15.0,  # antecip_b4
-    MIN_MODULACAO,  # min_modulacao (respeita config_colunas.json)
-    0.35,  # peso_retomada
-    FATOR_SOBREMARCHA   # fator_sprint (lido de config_colunas.json)
-])
+if TEM_B1:
+    # 9 Parâmetros reais (Com B1)
+    x_inicial = np.array([
+        20.0,  # b1_lim
+        30.0,  # b2_lim
+        70.0,  # b3_lim
+        85.0,  # b4_lim
+        20.0,  # rampa_b2
+        20.0,  # rampa_b3
+        15.0,  # antecip_b1
+        15.0,  # antecip_b4
+        0.35   # peso_retomada
+    ])
+else:
+    # 7 Parâmetros reais (Sem B1)
+    x_inicial = np.array([
+        30.0,  # b2_lim
+        70.0,  # b3_lim
+        85.0,  # b4_lim
+        20.0,  # rampa_b2
+        20.0,  # rampa_b3
+        15.0,  # antecip_b4
+        0.35   # peso_retomada
+    ])
 
 melhores_params, melhor_score, hist_scores = cma_es(
     func=obj_cma,
@@ -476,17 +538,30 @@ _, producao_otimizada, v_sug_final, v_alvo_bruta = simular_controle_v4(melhores_
 # =====================================================================
 # 5. DIAGNÓSTICO DE CAUSA-RAIZ (CÓDIGOS DE MOTIVO / ENUM)
 # =====================================================================
-b1_opt = float(np.clip(melhores_params[0], 10.0, 30.0))
-b2_opt = float(np.clip(melhores_params[1], 15.0, 50.0))
-b3_opt = float(np.clip(melhores_params[2], 50.0, 85.0))
-b4_opt = float(np.clip(melhores_params[3], 70.0, 90.0))
-rampa_b2_opt = float(np.clip(melhores_params[4], 10.0, 35.0))
-rampa_b3_opt = float(np.clip(melhores_params[5], 10.0, 35.0))
-antecip_b1_opt = float(np.clip(melhores_params[6], 5.0, 30.0))
-antecip_b4_opt = float(np.clip(melhores_params[7], 5.0, 30.0))
-min_mod_opt = float(MIN_MODULACAO)  # Estritamente do config_colunas.json
-peso_retomada_opt = float(np.clip(melhores_params[9], 0.10, 0.60))
-fator_sprint_opt = float(FATOR_SOBREMARCHA)  # Estritamente do config_colunas.json (ex: 1.038)
+if TEM_B1:
+    b1_opt = float(np.clip(melhores_params[0], 10.0, 30.0))
+    b2_opt = float(np.clip(melhores_params[1], 15.0, 50.0))
+    b3_opt = float(np.clip(melhores_params[2], 50.0, 85.0))
+    b4_opt = float(np.clip(melhores_params[3], 70.0, 90.0))
+    rampa_b2_opt = float(np.clip(melhores_params[4], 10.0, 35.0))
+    rampa_b3_opt = float(np.clip(melhores_params[5], 10.0, 35.0))
+    antecip_b1_opt = float(np.clip(melhores_params[6], 5.0, 30.0))
+    antecip_b4_opt = float(np.clip(melhores_params[7], 5.0, 30.0))
+    peso_retomada_opt = float(np.clip(melhores_params[8], 0.10, 0.60))
+    min_mod_opt = float(MIN_MODULACAO)
+    fator_sprint_opt = float(FATOR_SOBREMARCHA)
+else:
+    b1_opt = None
+    antecip_b1_opt = None
+    b2_opt = float(np.clip(melhores_params[0], 15.0, 50.0))
+    b3_opt = float(np.clip(melhores_params[1], 50.0, 85.0))
+    b4_opt = float(np.clip(melhores_params[2], 70.0, 90.0))
+    rampa_b2_opt = float(np.clip(melhores_params[3], 10.0, 35.0))
+    rampa_b3_opt = float(np.clip(melhores_params[4], 10.0, 35.0))
+    antecip_b4_opt = float(np.clip(melhores_params[5], 5.0, 30.0))
+    peso_retomada_opt = float(np.clip(melhores_params[6], 0.10, 0.60))
+    min_mod_opt = float(MIN_MODULACAO)
+    fator_sprint_opt = float(FATOR_SOBREMARCHA)
 
 # Carregar mapa de motivos
 mapa_motivos = {}
@@ -515,7 +590,6 @@ for i in range(n_pts):
         m_id = 0   # NORMAL_FULL
     else:
         # Velocidade abaixo da nominal -> Diagnosticar Causa Raiz
-        # Slew rate limitando aceleração
         if v_alvo_bruta[i] > v + 150.0:
             m_id = 60  # LIMITADOR_RAMPA_MECANICA
         elif b2_hist[i] < b2_opt and b3_hist[i] > b3_opt:
@@ -532,7 +606,7 @@ for i in range(n_pts):
             m_id = 70  # MAQUINA_MONTANTE_LENTA
         elif b4_hist[i] > b4_opt:
             m_id = 50  # FEEDFORWARD_ALERTA_B4
-        elif b1_hist[i] < b1_opt:
+        elif TEM_B1 and b1_opt is not None and b1_hist[i] < b1_opt:
             m_id = 40  # FEEDFORWARD_ALERTA_B1
         else:
             m_id = 20 if (b3_hist[i] - b3_opt) > (b2_opt - b2_hist[i]) else 10
@@ -543,13 +617,14 @@ for i in range(n_pts):
 
 # Salvar parâmetros otimizados em JSON
 parametros_json = {
-    "b1_lim": round(b1_opt, 2),
+    "tem_b1": TEM_B1,
+    "b1_lim": round(b1_opt, 2) if b1_opt is not None else None,
     "b2_lim": round(b2_opt, 2),
     "b3_lim": round(b3_opt, 2),
     "b4_lim": round(b4_opt, 2),
     "rampa_b2": round(rampa_b2_opt, 2),
     "rampa_b3": round(rampa_b3_opt, 2),
-    "antecipacao_b1": round(antecip_b1_opt, 2),
+    "antecipacao_b1": round(antecip_b1_opt, 2) if antecip_b1_opt is not None else None,
     "antecipacao_b4": round(antecip_b4_opt, 2),
     "fator_reducao": round(min_mod_opt, 3),
     "peso_retomada_tendencia": round(peso_retomada_opt, 3),
@@ -613,13 +688,14 @@ cod_funcao = (
     cod_funcao
     .replace("__DATA_GERACAO__", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     .replace("__VEL_NOMINAL__", str(int(VELOCIDADE_NOMINAL_ECH)))
-    .replace("__B1_OPT__", f"{b1_opt:.2f}")
+    .replace("__TEM_B1__", "True" if TEM_B1 else "False")
+    .replace("__B1_OPT__", f"{b1_opt:.2f}" if b1_opt is not None else "None")
     .replace("__B2_OPT__", f"{b2_opt:.2f}")
     .replace("__B3_OPT__", f"{b3_opt:.2f}")
     .replace("__B4_OPT__", f"{b4_opt:.2f}")
     .replace("__RAMPA_B2_OPT__", f"{rampa_b2_opt:.2f}")
     .replace("__RAMPA_B3_OPT__", f"{rampa_b3_opt:.2f}")
-    .replace("__ANTECIP_B1_OPT__", f"{antecip_b1_opt:.2f}")
+    .replace("__ANTECIP_B1_OPT__", f"{antecip_b1_opt:.2f}" if antecip_b1_opt is not None else "None")
     .replace("__ANTECIP_B4_OPT__", f"{antecip_b4_opt:.2f}")
     .replace("__MIN_MOD_OPT__", f"{min_mod_opt:.3f}")
     .replace("__PESO_RETOMADA_OPT__", f"{peso_retomada_opt:.3f}")
@@ -820,7 +896,7 @@ print(f"➔ Todos os {len(dias_unicos)} gráficos diários salvos com sucesso em
 # Curva de Convergência CMA-ES
 fig, ax = plt.subplots(figsize=(10, 4))
 ax.plot(hist_scores, color="#2980B9", linewidth=2.2)
-ax.set_title("Curva de Convergência CMA-ES V4 (11 Parâmetros)", fontweight="bold")
+ax.set_title(f"Curva de Convergência CMA-ES V4 ({len(x_inicial)} Parâmetros Reais)", fontweight="bold")
 ax.set_xlabel("Geração")
 ax.set_ylabel("Fitness Score")
 ax.grid(True, linestyle="--", alpha=0.4)
@@ -872,7 +948,10 @@ rel.append(f"➔ Teto Sprint / Sobrevelocidade: {fator_sprint_opt*100:.1f}% ({in
 rel.append(f"➔ Rampa Mecânica Máxima (Slew) : {MAX_RAMPA_CPH_PASSO:.0f} CPH por passo de 30s ({MAX_RAMPA_CPH_PASSO/30:.1f} CPH/s)")
 rel.append(f"➔ Gatilho Falta Entrada (B2)   : < {b2_opt:.1f}% (Rampa: {rampa_b2_opt:.1f}%)")
 rel.append(f"➔ Gatilho Acúmulo Saída (B3)   : > {b3_opt:.1f}% (Rampa: {rampa_b3_opt:.1f}%)")
-rel.append(f"➔ Feedforward Extremo B1       : < {b1_opt:.1f}% (Margem: {antecip_b1_opt:.1f}%)")
+if TEM_B1 and b1_opt is not None and antecip_b1_opt is not None:
+    rel.append(f"➔ Feedforward Extremo B1       : < {b1_opt:.1f}% (Margem: {antecip_b1_opt:.1f}%)")
+else:
+    rel.append("➔ Feedforward Extremo B1       : [Desativado / Topologia sem B1]")
 rel.append(f"➔ Feedforward Extremo B4       : > {b4_opt:.1f}% (Margem: {antecip_b4_opt:.1f}%)")
 rel.append(f"➔ Fator Retomada Sincronizada  : {peso_retomada_opt*100:.1f}% de alívio quando a jusante está acelerando")
 rel.append("="*75)

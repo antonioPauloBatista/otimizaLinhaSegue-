@@ -20,8 +20,8 @@ def main():
     print(f"Rastreamento de eventos ativo -> Arquivo JSON: '{ARQUIVO_JSON_LIVE}'\n")
 
     ctrl = ControladorVelocidadeV4(velocidade_nominal=90000,
-                                   tempo_rampa_subida_s=10.0,
-                                   tempo_rampa_descida_s=8.0)
+                                   tempo_rampa_subida_s=30.0,
+                                   tempo_rampa_descida_s=10.0)
     print(f"Rampa Mecânica Referência (Velocidade Máxima Nominal: {ctrl.vel_nom:,.0f} CPH):")
     print(f"   ↳ Subida : {ctrl.tempo_rampa_subida_s:.1f}s de 0 a 100% ({ctrl.taxa_subida_cph_s:,.0f} CPH/s)")
     print(f"   ↳ Descida: {ctrl.tempo_rampa_descida_s:.1f}s de 100% a 0 ({ctrl.taxa_descida_cph_s:,.0f} CPH/s)\n")

@@ -97,6 +97,7 @@ O arquivo reúne todas as definições da planta em um único local, dividido em
   "identificacao_linha": { ... },
   "servidor_opc": { ... },
   "heartbeat": { ... },
+  "habilitar_segue": { ... },
   "maquinas": { ... },
   "buffers": { "B1": { ... }, "B2": { ... }, "B3": { ... }, "B4": { ... } },
   "controle": { ... },
@@ -138,7 +139,18 @@ Garante a segurança mecânica da linha contra travamentos de software ou falhas
 | `modo` | String | `"pulse_one"` | Estratégia de handshake: `"pulse_one"` (escreve 1 e CLP zera), `"toggle"` (inverte bit) ou `"counter"` (contador 0 a 32767). |
 | `descricao` | String | `""` | Texto explicativo da rotina para operadores. |
 
-### 3.4 Máquinas e Setpoint (`maquinas`)
+### 3.4 Comando de Habilitação do Segue (`habilitar_segue`)
+Permite comandar ou pulsar a tag de habilitação no CLP (ex: pressionar botão por 15 segundos ou manter ativo enquanto em nível 1):
+
+| Parâmetro | Tipo | Padrão | Descrição |
+| :--- | :--- | :--- | :--- |
+| `tag` | String | `"ns=2;s=..._SG_EN_BT"` | Tag OPC UA do botão/bit de habilitação no CLP. Se omitido, herda de `tag_segue_habilitado`. |
+| `ativo` | Boolean | `false` | Se `true`, executa a rotina de acionamento ao iniciar (também ativável via ENV `HABILITAR_SEGUE_ATIVAR=1`). |
+| `tempo_s` | Float | `15.0` | Tempo em segundos para manter a tag pressionada/em nível lógico 1 no modo pulso (padrão 15s). |
+| `modo` | String | `"pulso_15s"` | `"pulso_15s"` (liga por 15s e desliga) ou `"manter_enquanto_1"` (sustenta em 1 enquanto ativo). |
+| `descricao` | String | `""` | Descrição técnica da rotina. |
+
+### 3.5 Máquinas e Setpoint (`maquinas`)
 Define as tags de medição e a interface de comando de velocidade:
 
 | Parâmetro | Tipo | Exemplo | Descrição |
@@ -148,11 +160,12 @@ Define as tags de medição e a interface de comando de velocidade:
 | `tag_velocidade_jusante` | String | `"ns=2;s=...PZ512001_S"` | Tag de leitura da velocidade do pasteurizador (PZ) em CPH. |
 | `tag_escrita_setpoint` | String | `"ns=2;s=..._SG_SP_W"` | Tag do CLP onde o setpoint calculado é escrito. |
 | `unidade_escrita_setpoint` | String | `"percentual"` | `"percentual"` (envia 0 a 103%) ou `"cph"` (envia em garrafas/h). |
-| `tag_segue_habilitado` | String | `"ns=2;s=..._SG_EN_BT"` | Chave física/IHM de habilitação do Segue. Quando `False`, entra em bypass. |
-| `tag_status_maquina` | String | `"ns=2;s=..._STATUS"` | Tag booleana do status operacional da máquina no CLP (para telemetria de parada própria). |
+| `tag_segue_habilitado` | String | `"ns=2;s=..._SG_EN_BT"` | Chave física/IHM de habilitação do Segue no CLP. Quando `False`, entra em bypass. |
+| `tag_status_maquina` | String | `"ns=2;s=..._STATUS"` | Tag booleana do status operacional da máquina no CLP. |
+| `tag_trava_entrada` | String | `"ns=2;s=..._TRAVA_ENTRADA"` | Tag da trava de entrada de garrafas (estrela) coletada exclusivamente para telemetria no InfluxDB/Grafana. |
 | `velocidade_nominal` | Float | `90000.0` | Velocidade nominal de regime normal da máquina em CPH. |
 
-### 3.5 Setores dos Buffers (`buffers.B1` a `buffers.B4`)
+### 3.6 Setores dos Buffers (`buffers.B1` a `buffers.B4`)
 Mapeia a geometria física e os sensores ópticos de cada esteira de acúmulo:
 
 | Parâmetro | Tipo | Descrição |
@@ -167,7 +180,7 @@ Mapeia a geometria física e os sensores ópticos de cada esteira de acúmulo:
 | `setores[].habilitado` | Boolean | Permite isolar um sensor em pane sem parar o sistema (`true`/`false`). |
 | `setores[].descricao` | String | Identificação mecânica da fotocélula (ex: "Sensor 106B2"). |
 
-### 3.6 Parâmetros do Controlador Segue (`controle`)
+### 3.7 Parâmetros do Controlador Segue (`controle`)
 Configura a dinâmica matemática, rampas, histereses e segurança do algoritmo:
 
 | Parâmetro | Tipo | Padrão | Descrição |
@@ -180,11 +193,14 @@ Configura a dinâmica matemática, rampas, histereses e segurança do algoritmo:
 | `margem_sprint_b2_liga` | Float | `15.0` | Margem percentual acima de `b2_lim` necessária para ATIVAR o Sprint (garante garrafa de sobra na entrada). |
 | `margem_sprint_b2_desliga` | Float | `5.0` | Margem percentual acima de `b2_lim` para DESATIVAR o Sprint por histerese (evita repicadas). |
 | `tempo_minimo_sprint_s` | Float | `60.0` | Tempo mínimo de permanência em sprint para evitar picos curtos de aceleração. |
+| `alpha_ewma` | Float | `0.25` | Coeficiente do filtro de suavização EWMA dos buffers (0.0 a 1.0). |
 | `modo_sombra` | Boolean | `true` | Trava de segurança: se `true`, apenas calcula e monitora (sem escrita no CLP). |
 | `escrever_heartbeat_modo_sombra` | Boolean | `false` | Define se deve pulsar o watchdog mesmo com o modo sombra ativo. |
 | `arquivo_eventos_json` | String | `"eventos_motivos_live_v4.json"` | Arquivo local onde cada ciclo e motivo de decisão são registrados. |
 
-### 3.7 Telemetria Grafana / InfluxDB (`telemetria_influx`)
+> **Nota Operacional:** Todos os parâmetros acima podem ser sobrescritos diretamente por variáveis de ambiente homônimas em maiúsculas (ex: `ALPHA_EWMA`, `TEMPO_RAMPA_SUBIDA_S`, `TEMPO_RAMPA_DESCIDA_S`, `MODO_SOMBRA`, etc.), tendo prioridade sobre o JSON.
+
+### 3.8 Telemetria Grafana / InfluxDB (`telemetria_influx`)
 Transmite a cada ciclo todos os campos em tempo real para o InfluxDB e dashboards do Grafana:
 
 | Parâmetro | Tipo | Exemplo | Descrição |
@@ -313,7 +329,15 @@ A aplicação possui uma imagem autocontida através do arquivo `Dockerfile` e `
     image: controlador-v4-opc:latest
     restart: always
     environment:
-      - MODO_SOMBRA=true       # Inicia protegido em modo sombra por padrão
+      - PYTHONUNBUFFERED=1
+      - MODO_SOMBRA=false                   # false para liberar escrita de setpoint no CLP
+      - ESCREVER_HEARTBEAT_MODO_SOMBRA=true # Watchdog ativo
+      - ALPHA_EWMA=0.35                     # Suavização dos buffers (EWMA)
+      - TEMPO_RAMPA_SUBIDA_S=40.0           # Rampa mecânica de aceleração suave
+      - TEMPO_RAMPA_DESCIDA_S=40.0          # Rampa mecânica de desaceleração suave
+      - HABILITAR_SEGUE_ATIVAR=1            # Aciona a tag de habilitação no CLP (1 = ativado)
+      - HABILITAR_SEGUE_MODO=pulso_15s       # pulso_15s (liga por 15s e desliga) ou manter_enquanto_1
+      - HABILITAR_SEGUE_TEMPO_S=15          # Tempo de retenção em segundos (padrão 15s)
     deploy:
       resources:
         limits:
@@ -323,7 +347,7 @@ A aplicação possui uma imagem autocontida através do arquivo `Dockerfile` e `
       - segue-network
 ```
 
-### Comandos de Gestão do Container:
+### 8.1 Comandos de Gestão do Container:
 ```bash
 # Entrar na pasta do controlador
 cd Controle_Velocidade_4
@@ -340,7 +364,35 @@ docker compose down
 
 ---
 
-### 8.2 Build Manual e Exportação de Imagem (`.tar.gz`) para Ambiente sem Internet
+### 8.2 Tabela Completa de Variáveis de Ambiente Suportadas (Docker / .env)
+
+As variáveis de ambiente têm **prioridade máxima** sobre os arquivos JSON, permitindo calibrar o controlador sem alterar código ou reconstruir imagens:
+
+| Variável de Ambiente | Padrão (JSON) | Descrição e Impacto Operacional |
+| :--- | :---: | :--- |
+| `MODO_SOMBRA` | `true` | Se `false`, autoriza a escrita de setpoint no CLP. Se `true`, roda apenas em leitura/cálculo seguro. |
+| `ESCREVER_HEARTBEAT_MODO_SOMBRA` | `false` | Se `true`, continua enviando o pulso watchdog ao CLP mesmo em modo sombra. |
+| `ALPHA_EWMA` | `0.25` | Coeficiente do filtro exponencial dos buffers (0.0 a 1.0). Quanto menor, mais suave e filtrado o sinal. |
+| `TEMPO_RAMPA_SUBIDA_S` | `30.0` | Segundos para acelerar de 0 a 100% nominal (proteção mecânica contra tombamento de garrafas). |
+| `TEMPO_RAMPA_DESCIDA_S` | `10.0` | Segundos para desacelerar de 100% a 0 nominal. |
+| `BANDA_MORTA_CPH` | `100.0` | Variação mínima em CPH necessária para enviar novo setpoint (evita hunting mecânico no inversor). |
+| `FATOR_SPRINT` | `1.05` | Multiplicador de velocidade em sobremarcha quando a linha estiver desimpedida (ex: 1.05 = 105%). |
+| `MARGEM_SPRINT_B2_LIGA` | `20.0` | Margem acima de `b2_lim` necessária para ligar o Sprint. |
+| `MARGEM_SPRINT_B2_DESLIGA` | `8.0` | Margem acima de `b2_lim` para desligar o Sprint por histerese. |
+| `TEMPO_MINIMO_SPRINT_S` | `60.0` | Tempo mínimo em segundos de permanência em sprint para evitar oscilações curtas. |
+| `CICLO_CONTROLE_S` | `10.0` | Intervalo do loop de otimização em segundos. |
+| `HABILITAR_SEGUE_ATIVAR` | `0` | Se `1` ou `true`, aciona o envio de comando na tag de habilitação do CLP. |
+| `HABILITAR_SEGUE_TAG_OPC` / `TAG` | *(vazio)* | Endereço NodeId OPC UA da tag de Force Enable no CLP. **Não herda do JSON** (definida exclusivamente por ENV). |
+| `HABILITAR_SEGUE_VALOR` | `1` | Valor enviado ao CLP durante o acionamento (aceita `1`, `0`, `true`, `false` ou número). |
+| `HABILITAR_SEGUE_TEMPO_S` | `15.0` | Duração do acionamento em segundos antes de retornar para o repouso (padrão 15s). |
+| `HABILITAR_SEGUE_VALOR_REPOUSO` | `0` | Valor restaurado no CLP após o tempo decorrido ou ao encerrar/Fail-Safe. |
+| `FORCAR_SEGUE_HABILITADO` | `false` | Se `true`, ignora a chave física de bypass do CLP (usado para testes controlados). |
+
+> 🔒 **Regra de Arquitetura Industrial:** As tags OPC UA do CLP (sensores de buffer, velocidades de máquinas e `tag_trava_entrada`) **não são passadas por variáveis de ambiente**. Elas são cadastradas exclusivamente no arquivo [`config_opc_v4.json`](config_opc_v4.json) para garantir rastreabilidade e integridade no chão de fábrica. A tag de force enable (`HABILITAR_SEGUE_TAG_OPC`) existe **exclusivamente via variável de ambiente** (não herda do JSON e nunca sobrescreve o arquivo em disco).
+
+---
+
+### 8.3 Build Manual e Exportação de Imagem (`.tar.gz`) para Ambiente sem Internet
 
 Caso o IPC / Servidor da planta industrial não tenha saída para a internet, você pode compilar a imagem no seu ambiente de desenvolvimento e exportá-la:
 
@@ -402,6 +454,7 @@ O Controlador V4 grava todas as variáveis de processo de cada ciclo diretamente
   - `status_modulacao`: `DESATIVADA_NOMINAL`, `ATIVA_MODULACAO`, `SOBREMARCHA_SPRINT`
   - `motivo_codigo`: Código da regra atuante (ex: `NORMAL_FULL`, `ACUMULO_ECH_PZ`)
   - `maquina_causadora`: Gargalo que motivou a decisão
+  - `trava_entrada`: `"1"` (estrela destravada com garrafas) ou `"0"` (restrita/sem garrafas)
 
 * **Fields (Valores numéricos e métricas):**
   - `b1_pct`, `b2_pct`, `b3_pct`, `b4_pct`: Níveis calculados dos buffers (%)
@@ -413,6 +466,8 @@ O Controlador V4 grava todas as variáveis de processo de cada ciclo diretamente
   - `delta_setpoint_real_cph`: Diferença entre o setpoint V4 e a velocidade real
   - `v_in_cph`: Velocidade da máquina a montante (DPL)
   - `v_out_cph`: Velocidade da máquina a jusante (PZ)
+  - `trava_entrada`: Booleano (`t`/`f`) indicando se a estrela de entrada está destravada
+  - `trava_entrada_int`: Inteiro (`1i`/`0i`) para cálculos, filtros e gráficos no Grafana
   - `motivo_id`: ID numérico da regra do V4
   - `motivo_descricao`: Descrição em texto da condição
   - `acao_recomendada`: Ação prescritiva de controle
@@ -498,5 +553,73 @@ python obter_dados_grafana_v4.py --list
 3. Operar em Tempo Real via OPC UA
    └─► python cliente_opc_v4.py
 ```
+
+---
+
+## 11. Comando `habilitar_segue` (Pulso de 15s) e Trava de Entrada no CLP
+
+Esta funcionalidade foi desenhada para permitir que o controlador comande ou pulse diretamente a tag de habilitação do Segue no ladder do CLP, além de coletar a trava de entrada para monitoramento no Grafana.
+
+### 11.1 Como Funciona o Comando `habilitar_segue`:
+* **Operação Estritamente Temporizada com Retorno ao Repouso:**
+  Ao iniciar a conexão OPC UA, o controlador escreve o valor ativo (`HABILITAR_SEGUE_VALOR`, padrão `1`) na tag informada, sustenta o nível pelo tempo determinado em segundos (`HABILITAR_SEGUE_TEMPO_S`, padrão `15.0`s) de forma não-bloqueante, e em seguida **retorna obrigatoriamente a tag para o valor de repouso** (`HABILITAR_SEGUE_VALOR_REPOUSO`, padrão `0`).
+* **Segurança Industrial (Fail-Safe Obrigatório):**
+  Toda escrita é envolvida em blocos de proteção `try...finally` e interceptadores de encerramento (`SIGINT`/`SIGTERM`/`docker stop`). Mesmo que a conexão oscile ou o container seja parado durante a temporização, o controlador garante a execução do retorno para o valor de repouso para que o CLP nunca fique com a tag travada.
+* **Auto-detecção de Tipo de Dado:**
+  O cliente lê o tipo de dado do nó no CLP (`VariantType`) antes de escrever, suportando tanto tags booleanas (`BOOL`) quanto inteiras (`INT`, `DINT`), convertendo automaticamente o valor (`1`/`0` ou `True`/`False`) para evitar o erro de escrita `BadWriteNotSupported`.
+* **Operação Exclusiva em Memória RAM via ENV:**
+  A tag de acionamento (`HABILITAR_SEGUE_TAG_OPC`) existe **exclusivamente via variável de ambiente** e não herda do JSON. O arquivo `config_opc_v4.json` em disco nunca é sobrescrito.
+
+### 11.2 Configuração via Variáveis de Ambiente (Docker / .env):
+Todas as variáveis utilizam o prefixo obrigatório `HABILITAR_SEGUE`:
+
+| Variável de Ambiente | Padrão | Descrição |
+| :--- | :--- | :--- |
+| `HABILITAR_SEGUE_ATIVAR` | `0` | Defina como `1`, `true` ou `yes` para ligar o acionamento (feature flag). |
+| `HABILITAR_SEGUE_TAG_OPC` / `HABILITAR_SEGUE_TAG` | *(Vazio / Sem herança)* | Endereço NodeId OPC UA da tag de Force Enable no CLP. **Existe exclusivamente via ENV (não herda do JSON)**. |
+| `HABILITAR_SEGUE_VALOR` | `1` | Valor lógico/numérico escrito na tag durante o acionamento (`1`, `0`, `true`, `false`). |
+| `HABILITAR_SEGUE_TEMPO_S` | `15.0` | Duração do acionamento em segundos antes de retornar para o repouso. |
+| `HABILITAR_SEGUE_VALOR_REPOUSO` | `0` | Valor restaurado na tag ao final do tempo ou no encerramento (`Fail-Safe`). |
+
+### 11.3 Teste Manual Direto via Linha de Comando (`assistente_opc.py`):
+Você pode testar o pulso de 15 segundos na tag sem precisar rodar o controlador inteiro:
+
+```bash
+# Executa o pulso de 15 segundos na tag padrão configurada no JSON:
+python Controle_Velocidade_4/assistente_opc.py --habilitar-segue-pulsar --tempo 15
+
+# Executa o pulso informando uma tag customizada:
+python Controle_Velocidade_4/assistente_opc.py --habilitar-segue-pulsar --tag "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_EN_BT" --tempo 15
+```
+
+### 11.4 Cadastro e Telemetria da Trava de Entrada de Garrafas no Banco de Dados (InfluxDB):
+A tag da trava de entrada de garrafas é cadastrada diretamente no arquivo **`config_opc_v4.json`** (bloco `"maquinas"`), mantendo a arquitetura industrial padronizada sem poluir as variáveis de ambiente:
+
+```json
+  "maquinas": {
+    "tag_velocidade_montante": "ns=2;s=L512_DPL512001.DPL512001.LMS.DPL512001_S",
+    "tag_velocidade_atual": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_S",
+    "tag_velocidade_jusante": "ns=2;s=L512_PZ512001.PZ512001.LMS.PZ512001_S",
+    "tag_escrita_setpoint": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_SP_W",
+    "unidade_escrita_setpoint": "percentual",
+    "tag_segue_habilitado": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_EN_BT",
+    "tag_status_maquina": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_STATUS",
+    "tag_trava_entrada": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_INTERLOCK06"
+  }
+```
+
+O cliente OPC monitora essa tag via assinatura em tempo real e grava os dados a cada ciclo no InfluxDB:
+* **Tag InfluxDB:** `trava_entrada="1"` (aberta) ou `"0"` (fechada/restringida)
+* **Field InfluxDB:** `trava_entrada=true/false` e `trava_entrada_int=1/0`
+
+* **Filtro Rigoroso no Grafana:**
+  Permite criar painéis comparando ganho real com `Trava Entrada == 1` e `SEGUE == 1`:
+  ```sql
+  SELECT mean("v_atual_cph") AS "Real", mean("v_setpoint_cph") AS "SEGUE" 
+  FROM "512_v4" 
+  WHERE "trava_entrada" = '1' AND "segue_habilitado" = 'true' AND $timeFilter 
+  GROUP BY time($__interval) fill(null)
+  ```
+
 
 

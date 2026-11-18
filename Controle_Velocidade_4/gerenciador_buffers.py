@@ -47,6 +47,7 @@ class SetorEsteira:
 class BufferGeometrico:
     def __init__(self, id_buffer: str, nome: str = "", capacidade_area_total_m2: Optional[float] = None):
         self.id_buffer = id_buffer.lower()  # "b1", "b2", "b3", "b4"
+        self.id = self.id_buffer  # Alias de conveniência
         self.nome = nome or f"Buffer {id_buffer.upper()}"
         self.capacidade_area_total_m2 = capacidade_area_total_m2
         self.setores: List[SetorEsteira] = []
@@ -88,7 +89,10 @@ class BufferGeometrico:
         Soma as áreas incrementais de todos os setores habilitados que estão ocupados.
         """
         if not self.setores:
-            return 50.0  # Nível neutro seguro caso não haja setores configurados
+            # Em engenharia de processo:
+            # Buffer de entrada (b1, b2) sem setores -> 100.0% (sem falta de vasilhame / pleno)
+            # Buffer de saída (b3, b4) sem setores -> 0.0% (sem acúmulo / livre)
+            return 100.0 if self.id.lower() in ["b1", "b2"] else 0.0
 
         total_area = self.area_total_habilitada_m2
         if total_area <= 0:

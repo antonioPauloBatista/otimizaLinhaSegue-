@@ -262,22 +262,51 @@ $$V_{\text{alvo}} = \text{clip}\left(V_{\text{alvo}}, V_{\text{reduzida}}, V_{\t
 
 ---
 
+### 8.4 Topologia Modular de Buffers: 3 Buffers (sem B1) vs 4 Buffers (com B1)
+
+Na indústria de embalagem, a configuração das esteiras de transporte varia entre fábricas e linhas:
+* **Topologia Completa (4 Buffers):** Comum em linhas onde a despaletizadora (DPL) alimenta uma lavadora ou desencaixotadora (ECI) com mesa de acúmulo intermediária (B1), seguida da esteira de entrada da enchedora (B2), esteira de saída (B3) e pulmão pós-pasteurizador (B4).
+* **Topologia Direta (3 Buffers - Exemplo Linha 512):** A despaletizadora descarrega diretamente no pulmão de entrada da enchedora (B2). Não existe esteira intermediária prévia nem máquina intermediária entre DPL e Enchedora. Nesse cenário, o sensor ou coluna de B1 não existe fisicamente.
+
+#### Tratamento na Inferência Fuzzy e Defuzzificação
+Quando o sistema opera em modo de 3 Buffers (`tem_b1 = False`):
+1. **Isolamento do Antecedente:** A regra R4 (Alerta B1) é desativada (`w_b1_alerta = 0.0`).
+2. **Defuzzificação Limpa:** O termo consequente de B1 e seu peso são totalmente excluídos da média ponderada:
+   ```text
+   V_alvo = (w_b2*V_red + w_b3*V_red + w_retomada*V_nom + w_b4*V_red + w_normal*V_nom + w_sprint*V_sprint) / (w_b2 + w_b3 + w_retomada + w_b4 + w_normal + w_sprint)
+   ```
+3. **Proteção Simétrica de Entrada via Feedforward de Vazão:**
+   Sem B1, a proteção de longo prazo da alimentação é garantida pelo monitoramento contínuo da velocidade da máquina a montante (`V_in`, velocidade da Despaletizadora). Se a máquina de entrada desacelerar abaixo de 85% da nominal, o sistema modula preventivamente para marcha reduzida, assegurando que o pulmão B2 não se esgote bruscamente.
+4. **Destravamento do Modo Sprint na Linha 512:**
+   Em versões anteriores que adotavam valor neutro de fallback (50%) para B1 ausente, a pertinência de alerta de B1 gerava uma ancoragem artificial na velocidade nominal (90.000 CPH), impedindo a entrada em Sprint. Com a topologia modular, ao confirmar que B2 está abastecido e a saída desimpedida, o controlador atinge livremente a sobrevelocidade autorizada (105% / 94.500 CPH), maximizando o OEE e o ganho em garrafas.
+
+---
+
 ## 9. Otimizador Matemático CMA-ES e Digital Twin
 
 Para calibrar os parâmetros de controle de forma global sem cair em mínimos locais, utilizamos o algoritmo **CMA-ES (Covariance Matrix Adaptation Evolution Strategy)**.
 
-### 9.1 Vetor de 11 Parâmetros Otimizados ($x \in \mathbb{R}^{11}$)
-1. $b_{1\_lim} \in [10, 30]\%$: Limiar de alerta no pulmão extremo a montante.
-2. $b_{2\_lim} \in [15, 50]\%$: Limiar de modulação por falta de garrafas na entrada.
-3. $b_{3\_lim} \in [50, 85]\%$: Limiar de modulação por acúmulo de garrafas na saída.
-4. $b_{4\_lim} \in [70, 90]\%$: Limiar de alerta no pulmão extremo a jusante.
-5. $\text{rampa}_{b2} \in [10, 35]\%$: Largura da transição fuzzy de entrada.
-6. $\text{rampa}_{b3} \in [10, 35]\%$: Largura da transição fuzzy de saída.
-7. $\text{antecip}_{b1} \in [5, 30]\%$: Janela de antecipação feedforward $B_1$.
-8. $\text{antecip}_{b4} \in [5, 30]\%$: Janela de antecipação feedforward $B_4$.
-9. $\text{min\_modulacao} \in [0.65, 0.90]$: Proporção mínima da velocidade nominal na marcha reduzida.
-10. $\text{peso\_retomada} \in [0.10, 0.60]$: Intensidade do alívio de rampa na retomada com a máquina da frente.
-11. $\text{fator\_sprint} \in [1.01, 1.05]$: Multiplicador de velocidade em sobremarcha.
+### 9.1 Vetor Adaptativo de Parâmetros Otimizados (7 ou 9 Parâmetros Reais)
+
+O algoritmo detecta automaticamente a presença da coluna de B1 no arquivo `config_colunas.json`. Quando ausente ou nula, o CMA-ES comuta seu espaço de busca para **7 parâmetros reais**, eliminando variáveis órfãs e redundâncias que causariam dispersão na convergência:
+
+> [!NOTE]
+> **Parâmetros Mestres de Segurança (Piso e Teto):**
+> O piso de modulação segura (`min_modulacao = 0.85` / 76.500 CPH) e o teto de sprint (`fator_sprint = 1.05` / 94.500 CPH) são **regras de engenharia mandatórias e soberanas** configuradas em `config_colunas.json`. Eles não são deixados para o algoritmo "adivinhar", sendo mantidos fixos e invioláveis durante toda a simulação e no controlador live.
+
+#### Modo Linha Direta / 3 Buffers (7 Parâmetros Reais):
+1. `b2_lim` [15% a 50%]: Limiar de modulação por falta de garrafas na entrada.
+2. `b3_lim` [50% a 85%]: Limiar de modulação por acúmulo de garrafas na saída.
+3. `b4_lim` [70% a 90%]: Limiar de alerta no pulmão extremo a jusante.
+4. `rampa_b2` [10% a 35%]: Largura da transição fuzzy de entrada.
+5. `rampa_b3` [10% a 35%]: Largura da transição fuzzy de saída.
+6. `antecip_b4` [5% a 30%]: Janela de antecipação feedforward do B4.
+7. `peso_retomada` [0.10 a 0.60]: Intensidade do alívio de rampa na retomada com a máquina da frente.
+
+#### Modo Linha Completa / 4 Buffers (9 Parâmetros Reais):
+Inclui adicionalmente os parâmetros de entrada extrema:
+* `b1_lim` [10% a 30%]: Limiar de alerta no pulmão extremo a montante.
+* `antecip_b1` [5% a 30%]: Janela de antecipação feedforward do B1.
 
 ### 9.2 Função Objetivo (Fitness Score)
 $$\text{Score} = \text{Produção Total} - \left(N_{\text{socos}} \times 40.000\right) - \left(\text{Penalidade}_{\text{acel}} \times 15.0\right) - \text{Penalidade}_{\text{bounds}}$$
@@ -399,11 +428,21 @@ Para rodar a calibração com Digital Twin e gerar todos os gráficos diários:
 python otimizador_velocidade_v4.py
 ```
 
-### 12.3 Testes Unitários Automatizados
-Para verificar o cumprimento estrito do Slew Rate, ativação de Sprint, aceleração por tendência e enum de motivos:
+### 12.3 Testes Automatizados (Unitários e Integridade)
+Para verificar o cumprimento estrito do Slew Rate, ativação de Sprint, aceleração por tendência, enum de motivos e topologia modular:
 ```bash
+# 1. Suíte de testes unitários da função de controle e topologias (3 Buffers vs 4 Buffers)
 python teste_unitario_v4.py
+
+# 2. Teste de consistência e paridade entre arquivos de configuração
+python teste_sincronizacao_configs.py
 ```
+* **Cenários Cobertos:**
+  * Desbloqueio do modo Sprint em linhas de 3 buffers (`tem_b1 = False`) com atingimento exato de 105% (94.500 CPH).
+  * Alternância dinâmica e idempotência ao comutar `tem_b1` entre `True` e `False`.
+  * Preservação da rampa de Slew Rate parametrizada por tempo em segundos.
+  * Proteção e desarme de Sprint por velocidade real rebaixada (`V_atual < 98% * V_nom`).
+  * Consistência de tags, velocidades nominais e flags de topologia entre `config_opc_v4.json`, `config_colunas.json` e `parametros_controle_v4.json`.
 
 ### 12.4 Teste de Bancada Live Interativo
 Para simular manualmente diferentes cenários de buffer e velocidades vizinhas no terminal:

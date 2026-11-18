@@ -222,7 +222,9 @@ class GravadorGrafanaV4:
         total_eventos_opc: int = 0,
         limiar_parada_cph: float = 10000.0,
         timestamp_s: Optional[int] = None,
-        status_maquina: bool = True
+        status_maquina: bool = True,
+        v_sem_controle: Optional[float] = None,
+        trava_entrada: Optional[bool] = None
     ) -> str:
         """Monta o registro completo do ciclo do Controlador V4 no Line Protocol."""
         linha = linha_info.get("linha", "512")
@@ -254,6 +256,10 @@ class GravadorGrafanaV4:
             "status_operacional": "RODANDO" if maquina_rodando else "PARADA"
         }
 
+        # Trava de Entrada de Garrafas (um único nome padronizado: trava_entrada)
+        val_trava_int = 1 if trava_entrada is True else 0
+        tags["trava_entrada"] = "1" if val_trava_int == 1 else "0"
+
         fields = {
             "b1_pct": float(b1),
             "b2_pct": float(b2),
@@ -276,8 +282,16 @@ class GravadorGrafanaV4:
             "status_maquina": bool(status_maquina),
             "heartbeat_counter": int(heartbeat_counter),
             "total_eventos_opc": int(total_eventos_opc),
-            "hb_status": str(hb_status)
+            "hb_status": str(hb_status),
+            "trava_entrada": val_trava_int,
+            "trava_entrada_int": val_trava_int
         }
+
+        # Velocidade nativa/projeto da máquina sem o controle do Segue (puramente informativa)
+        if v_sem_controle is not None:
+            val_sc = float(v_sem_controle)
+            fields["velocidade_maquina_sem_controle"] = val_sc
+            fields["velocidade_maquina_sem_controle_cph"] = val_sc
 
         return self.formatar_line_protocol(
             measurement=self.measurement_destino,

@@ -17,9 +17,16 @@
   },
   "heartbeat": {
     "tag": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_HB",
-    "intervalo_s": 1.0,
-    "modo": "pulse_one",
+    "intervalo_s": 1.2,
+    "modo": "toggle",
     "descricao": "Watchdog Handshake: O otimizador sempre escreve 1 (ou True) e o CLP zera para 0."
+  },
+  "habilitar_segue": {
+    "tag": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_EN_BT",
+    "ativo": false,
+    "tempo_s": 15.0,
+    "modo": "pulso_15s",
+    "descricao": "Acionamento da tag de habilitação do Segue no CLP por 15 segundos ou sustentação enquanto em 1."
   },
   "maquinas": {
     "tag_velocidade_montante": "ns=2;s=L512_DPL512001.DPL512001.LMS.DPL512001_S",
@@ -29,6 +36,8 @@
     "unidade_escrita_setpoint": "percentual",
     "tag_segue_habilitado": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_EN_BT",
     "tag_status_maquina": "ns=2;s=L512_ECH512001.ECH512001.LMS.ECH512001_STATUS",
+    "tag_trava_entrada": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.ECH512001_SG_INTERLOCK06",
+    "tag_velocidade_sem_controle": "ns=2;s=L512_ECH512001.ECH512001.SEGUE.Velocidade_Projeto",
     "velocidade_nominal": 90000.0
   },
   "buffers": {
@@ -535,13 +544,14 @@
   },
   "controle": {
     "ciclo_controle_s": 10.0,
-    "tempo_rampa_subida_s": 10.0,
-    "tempo_rampa_descida_s": 8.0,
+    "tempo_rampa_subida_s": 40.0,
+    "tempo_rampa_descida_s": 40.0,
     "banda_morta_cph": 100.0,
     "fator_sprint": 1.05,
     "margem_sprint_b2_liga": 20,
-    "margem_sprint_b2_desliga": 20,
-    "tempo_minimo_sprint_s": 90.0,
+    "margem_sprint_b2_desliga": 8.0,
+    "tempo_minimo_sprint_s": 60.0,
+    "alpha_ewma": 0.35,
     "modo_sombra": true,
     "escrever_heartbeat_modo_sombra": false,
     "arquivo_eventos_json": "eventos_motivos_live_v4.json"

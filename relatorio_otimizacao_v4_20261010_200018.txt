@@ -1,0 +1,29 @@
+===========================================================================
+   RELATÓRIO FINAL DO OTIMIZADOR DE VELOCIDADE V4: BALANÇO + MOTIVOS   
+===========================================================================
+➔ Produção Real Registrada no Histórico : 5,243,881 unidades.
+➔ Produção Simulada Otimizada V4       : 13,430,762 unidades.
+➔ GANHO DE PRODUÇÃO ESTIMADO (V4)       : +8,186,881 unidades (+156.12%)
+
+[MÉTRICAS DE PARADAS E ESTABILIDADE DE PROCESSO]
+➔ Amostras em Risco de Soco Mecânico no Histórico : 0
+➔ Amostras em Risco na Simulação Otimizada V4      : 0
+➔ Amostras Críticas Evitadas                       : 0 (0.0% de melhoria)
+➔ Tempo Extra de Uptime Recuperado                : 0h 0min
+
+[DISTRIBUIÇÃO DOS MOTIVOS DE OPERAÇÃO NO HISTÓRICO]
+   ↳ [ID 99 - OUTRO                     ]:  25305 amostras ( 48.3%) | Modulação
+   ↳ [ID  0 - OUTRO                     ]:  25293 amostras ( 48.3%) | Modulação
+   ↳ [ID 60 - OUTRO                     ]:   1812 amostras (  3.5%) | Modulação
+
+[PARÂMETROS OTIMIZADOS V4]
+➔ Velocidade Nominal Enchedora: 60,000 CPH
+➔ Piso de Modulação Seguro     : 75.0% (45,000 CPH)
+➔ Teto Sprint / Sobrevelocidade: 102.0% (61,200 CPH)
+➔ Rampa Mecânica Máxima (Slew) : 1000 CPH por passo de 30s (33.3 CPH/s)
+➔ Gatilho Falta Entrada (B2)   : < 31.1% (Rampa: 20.5%)
+➔ Gatilho Acúmulo Saída (B3)   : > 68.0% (Rampa: 21.9%)
+➔ Feedforward Extremo B1       : [Desativado / Topologia sem B1]
+➔ Feedforward Extremo B4       : > 84.2% (Margem: 15.5%)
+➔ Fator Retomada Sincronizada  : 12.5% de alívio quando a jusante está acelerando
+===========================================================================

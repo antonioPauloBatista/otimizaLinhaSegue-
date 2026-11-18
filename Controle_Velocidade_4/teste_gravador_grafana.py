@@ -105,7 +105,8 @@ class TestGravadorGrafanaV4(unittest.TestCase):
             motivo_id=4, motivo_info=motivo_info,
             modo_sombra=True,
             segue_habilitado=True,
-            timestamp_s=1700000000
+            timestamp_s=1700000000,
+            v_sem_controle=94500.0
         )
 
         self.assertIn("512_v4", linha_lp)
@@ -113,6 +114,8 @@ class TestGravadorGrafanaV4(unittest.TestCase):
         self.assertIn("modo_sombra=true", linha_lp)
         self.assertIn("b4_pct=92.0000", linha_lp)
         self.assertIn("v_setpoint_cph=92547.0000", linha_lp)
+        self.assertIn("velocidade_maquina_sem_controle=94500.0000", linha_lp)
+        self.assertIn("velocidade_maquina_sem_controle_cph=94500.0000", linha_lp)
         self.assertIn("motivo_id=4i", linha_lp)
 
     def test_resiliencia_offline_sem_gerar_csv(self):

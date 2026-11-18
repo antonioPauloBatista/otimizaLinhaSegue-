@@ -63,6 +63,30 @@ A taxa de aceleração e desaceleração é ajustada de forma física e direta e
 
 ---
 
+### 1.6 Topologia Modular de Buffers: 3 Buffers (sem B1) vs 4 Buffers (com B1)
+Nem toda linha de envase possui quatro zonas físicas de esteira de acúmulo. Por exemplo, na Linha 512, a Despaletizadora (DPL) alimenta diretamente o pulmão de entrada da Enchedora (B2), não existindo esteira intermediária prévia nem máquina intermediária:
+```text
+Linha 512 (3 Buffers):  [DPL] ──> ( B2 ) ──> [[ ENCHEDORA ]] ──> ( B3 ) ──> [ Pasteurizador ] ──> ( B4 ) ──> [ Empacotadora ]
+Linha Padrão (4 Buffers): [DPL] ──> ( B1 ) ──> [ ECI ] ──> ( B2 ) ──> [[ ENCHEDORA ]] ──> ( B3 ) ──> [ Pasteurizador ] ──> ( B4 ) ──> [ Rotuladora ]
+```
+
+* **Detecção Automática:**
+  * Se `Col_Buffer_Antes_Entrada` no `config_colunas.json` for vazio (`""` ou `null`), ou se no `config_opc_v4.json` o buffer B1 não contiver setores físicos configurados (`setores: []`), o sistema ativa automaticamente o modo de **3 Buffers** (`tem_b1 = False`).
+* **Tratamento no Gerenciador de Buffers (`gerenciador_buffers.py`):**
+  * Para buffers de entrada não configurados (como B1 na Linha 512), o valor retornado é **100.0%** (pleno / sem restrição de fluxo), garantindo que a ausência do sensor nunca seja interpretada erroneamente como falta de garrafas.
+  * Para buffers de saída não configurados, o valor retornado é **0.0%** (vazio / desimpedido).
+* **Ajuste na Lógica Fuzzy e Defuzzificação (`funcao_controle_v4.py`):**
+  * Quando `tem_b1 = False`, o cálculo de pertinência de alerta do B1 é isolado (`w_b1_alerta = 0.0`) e retirado da média ponderada Takagi-Sugeno.
+  * A proteção a montante é mantida integralmente e com precisão via **Feedforward de Velocidade da máquina de entrada** (`V_in`). Se a máquina anterior (DPL) desacelerar abaixo de 85% da nominal, a modulação protetiva atua imediatamente.
+* **Destravamento do Modo Sprint:**
+  * Sem a interferência do B1 inexistente, a enchedora atinge a sobrevelocidade máxima permitida (105% / 94.500 CPH) sempre que B2 estiver abastecido e a saída livre, gerando os ganhos reais de produção da fábrica.
+* **Otimizador CMA-ES Adaptativo (7 Parâmetros vs 9 Parâmetros Reais):**
+  * **Com B1 (4 Buffers):** Otimiza 9 parâmetros reais de buffers, rampas e retomada.
+  * **Sem B1 (3 Buffers):** Otimiza 7 parâmetros reais (remove `b1_lim` e `antecipacao_b1`).
+  * **Regras Mestres Soberanas:** O piso de modulação (`85%`) e o teto de sprint (`105%`) são fixados pelo `config_colunas.json` como regras mandatórias de segurança, eliminando variáveis redundantes do espaço de busca.
+
+---
+
 ## 🛠️ 2. Guia de Configuração e Execução do Otimizador
 
 O processo de otimização calibra os limiares matemáticos e as rampas mecânicas a partir do histórico real da sua linha.
@@ -138,13 +162,17 @@ python3 otimizador_velocidade_v4.py
 
 #### O que o otimizador faz durante a execução:
 1. Carrega os dados e aplica o pipeline anti-ruído (Mediana N=3 + EWMA 0.65).
-2. Executa a calibração matemática via CMA-ES buscando a melhor combinação de limiares dos buffers (B1, B2, B3, B4).
-3. **Recompila e salva** os módulos e parâmetros prontos:
-   * [`funcao_controle_v4.py`](funcao_controle_v4.py) (Função autônoma do controlador)
-   * [`parametros_controle_v4.json`](parametros_controle_v4.json) (Parâmetros ótimos)
+2. **Detecta a topologia da linha:**
+   * Se `Col_Buffer_Antes_Entrada` estiver vazio (`""` ou `null`), ativa o modo **3 Buffers** e calibra **7 parâmetros reais** no CMA-ES (eliminando `b1_lim` e `antecipacao_b1`).
+   * Se preenchido, ativa o modo **4 Buffers** e calibra **9 parâmetros reais**.
+   * O piso seguro e o teto do sprint são mantidos como regras fixas de engenharia via `config_colunas.json`.
+3. Executa a calibração matemática via CMA-ES buscando a melhor combinação de limiares dos buffers e rampas mecânicas.
+4. **Recompila e salva** os módulos e parâmetros prontos:
+   * [`funcao_controle_v4.py`](funcao_controle_v4.py) (Função autônoma do controlador, com `self.tem_b1` sincronizado)
+   * [`parametros_controle_v4.json`](parametros_controle_v4.json) (Parâmetros ótimos com `tem_b1: false` quando aplicável)
    * [`obter_dados_grafana_v4.py`](obter_dados_grafana_v4.py) (Extrator de histórico Grafana com paridade de colunas)
    * [`controlador_velocidade_live_v4.py`](controlador_velocidade_live_v4.py) (Simulador interativo de bancada)
-4. **Gera as Imagens e Gráficos de Produção:**
+5. **Gera as Imagens e Gráficos de Produção:**
    * Pasta **`graficos_velocidade_otimizada_v4/`**: Imagens `.png` de cada dia com o comparativo `Velocidade Real vs V4 Otimizada`, buffers e motivos.
    * Arquivo **`curva_convergencia_v4.png`**: Gráfico demonstrando a minimização da função custo e convergência do algoritmo.
    * Arquivo **`relatorio_otimizacao_v4_<data>.txt`**: Resumo de garrafas ganhas e paradas evitadas.
@@ -196,10 +224,12 @@ Para conectar o controlador ao CLP físico da fábrica através do módulo [`cli
   },
   "controle": {
     "ciclo_controle_s": 10.0,
-    "tempo_rampa_subida_s": 10.0,
-    "tempo_rampa_descida_s": 8.0,
-    "banda_morta_cph": 300.0,
-    "modo_sombra": true
+    "tempo_rampa_subida_s": 30.0,
+    "tempo_rampa_descida_s": 10.0,
+    "banda_morta_cph": 100.0,
+    "alpha_ewma": 0.25,
+    "modo_sombra": true,
+    "escrever_heartbeat_modo_sombra": false
   }
 }
 ```
@@ -217,6 +247,8 @@ Para conectar o controlador ao CLP físico da fábrica através do módulo [`cli
 * **`margem_sprint_b2_liga` e `margem_sprint_b2_desliga`**: Histerese de garrafas no buffer de entrada B2 para ligar (+15%) e desligar (+5%) o sprint com estabilidade.
 * **`tempo_minimo_sprint_s`**: Tempo mínimo de permanência em sobremarcha (ex: `60.0`s) para eliminar repicadas mecânicas.
 * **`tag_status_maquina`**: Tag do CLP de status operacional da máquina (usada para diagnóstico de parada própria).
+* **`tag_trava_entrada`**: Tag da trava de entrada de garrafas (estrela) monitorada para telemetria no InfluxDB e Grafana.
+* **`habilitar_segue` (Comando Temporizado 15s)**: Permite pulsar ou manter a tag de habilitação no CLP (controlado via variáveis de ambiente `HABILITAR_SEGUE_ATIVAR=1`, `HABILITAR_SEGUE_TEMPO_S=15`, `HABILITAR_SEGUE_MODO=pulso_15s`).
 * **`telemetria_influx`**: Transmissão em segundo plano para Grafana/InfluxDB sem atrasar o loop de controle.
 * Para ver a tabela completa de todos os parâmetros detalhados, consulte a Seção 3 do [MANUAL_CLIENTE_OPC_V4.md](MANUAL_CLIENTE_OPC_V4.md#3-dicionário-completo-de-parâmetros-config_opc_v4json).
 
@@ -342,3 +374,33 @@ O V4 categoriza cada decisão de velocidade em códigos mapeados em [`motivos_mo
 | **90** | `PARADA_SEGURANCA_BUFFER` | Intertravamento | Buffers em níveis críticos simultâneos. |
 | **91** | `PARADA_INTERTRAV_ENTRADA` | Intertravamento | Falta total de embalagens na entrada (B2 <= 10%). |
 | **92** | `PARADA_INTERTRAV_SAIDA` | Intertravamento | Saída completamente bloqueada (B3 >= 90%). |
+
+---
+
+## 🧪 7. Testes Automatizados e Validação
+
+O projeto possui suítes automatizadas de testes para garantir a robustez antes de qualquer implantação em campo ou container Docker:
+
+### 7.1 Suíte de Testes Unitários de Controle (`teste_unitario_v4.py`)
+Valida as regras de negócio, limites mecânicos, rampas de aceleração e a nova topologia modular:
+```bash
+python3 Controle_Velocidade_4/teste_unitario_v4.py
+```
+* **Cenários testados:**
+  * Rampa de aceleração suave respeitando o Slew Rate em segundos.
+  * Respeito estrito aos tetos mecânicos de desaceleração.
+  * Intertravamento do modo Sprint e acionamento somente com `V_atual >= 98% * V_nom`.
+  * Retomada antecipada sincronizada quando a máquina a jusante acelera.
+  * **Topologia sem B1 (Linha 512):** Valida que linhas sem B1 destravam o modo Sprint (105% / 94.500 CPH) com B2 abastecido e esteiras livres.
+  * **Alternância de Topologia (3 vs 4 Buffers):** Garante compatibilidade bidirecional ao alternar `tem_b1` entre `True` e `False`.
+
+### 7.2 Teste de Sincronização e Integridade de Configurações (`teste_sincronizacao_configs.py`)
+Valida a paridade entre os arquivos de configuração do CLP (`config_opc_v4.json`), colunas históricas (`config_colunas.json`) e parâmetros treinados (`parametros_controle_v4.json`):
+```bash
+python3 Controle_Velocidade_4/teste_sincronizacao_configs.py
+```
+* **Itens verificados:**
+  * Paridade de tags e velocidades nominais entre arquivos.
+  * Consistência de limites físicos e rampas mecânicas.
+  * Consistência do flag `tem_b1` entre a configuração de buffers e a função de controle.
+
