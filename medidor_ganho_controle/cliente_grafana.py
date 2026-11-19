@@ -11,6 +11,7 @@ Utiliza exatamente a mesma lógica de conexão e autenticação do obter_dados_g
 
 import os
 import sys
+import time
 import base64
 import datetime
 import requests
@@ -346,19 +347,51 @@ class ClienteGrafana:
 
         return pd.DataFrame()
 
-    def buscar_dados(self, tempo_inicio_str: str = "-1h", tempo_fim_str: str = "now()") -> pd.DataFrame:
+    @staticmethod
+    def _parsear_horas(janela_str: str) -> Optional[float]:
+        """Converte offsets como '-24h', '48h', '2d', '90m' para total de horas."""
+        if not janela_str:
+            return None
+        txt = str(janela_str).strip().lower()
+        if txt.startswith("now"):
+            txt = txt[3:].strip().lstrip("()").strip()
+        txt = txt.lstrip("-").strip()
+        try:
+            if txt.endswith("h"):
+                v = float(txt[:-1].strip())
+                return v if v > 0 else None
+            if txt.endswith("d"):
+                v = float(txt[:-1].strip()) * 24.0
+                return v if v > 0 else None
+            if txt.endswith("m"):
+                v = float(txt[:-1].strip()) / 60.0
+                return v if v > 0 else None
+        except ValueError:
+            return None
+        return None
+
+    @staticmethod
+    def _formatar_offset(h: float) -> str:
+        """Formata offset de horas para sintaxe InfluxQL ('24h', '90m')."""
+        if abs(h - round(h)) < 1e-6:
+            return f"{int(round(h))}h"
+        return f"{max(1, int(round(h * 60.0)))}m"
+
+    def buscar_dados(
+        self,
+        tempo_inicio_str: str = "-1h",
+        tempo_fim_str: str = "now()",
+        passo_horas: float = 1.0,
+        pausa_bloco_s: float = 0.05,
+    ) -> pd.DataFrame:
         """
         Busca dados da medição via proxy InfluxQL / /api/ds/query.
-        Caso o filtro de tempo falhe (por exemplo, relógio do servidor descompassado),
-        executa automaticamente fallback para buscar os pontos mais recentes.
+        Para janelas acima de 1h (ex: '-24h', '-48h'), busca de hora em hora para evitar
+        sobrecarga no Grafana/InfluxDB; caso o filtro de tempo falhe, faz fallback paginado.
         """
         if not self.conectado:
             if not self.conectar():
                 return pd.DataFrame()
-
-        t_inicio = tempo_inicio_str
-        if t_inicio.startswith("-"):
-            t_inicio = f"now() - {t_inicio[1:]}"
 
         meds_candidatas = [self.measurement]
         alt_med = self.measurement[:-3] if self.measurement.endswith("_v4") else f"{self.measurement}_v4"
@@ -369,6 +402,71 @@ class ClienteGrafana:
         for b_alt in ["soda", "Segue"]:
             if b_alt and b_alt not in buckets_candidatos:
                 buckets_candidatos.append(b_alt)
+
+        horas_totais = self._parsear_horas(tempo_inicio_str)
+        fim_norm = str(tempo_fim_str).strip().lower()
+        if (
+            horas_totais is not None
+            and passo_horas
+            and horas_totais > float(passo_horas)
+            and fim_norm in ("now()", "now")
+        ):
+            b_ativo, med_ativa = None, None
+            for b_cand in buckets_candidatos:
+                for med in meds_candidatas:
+                    df_probe = self._executar_query_influxql(f'SELECT * FROM "{med}" ORDER BY time DESC LIMIT 1', b_cand)
+                    if not df_probe.empty:
+                        b_ativo, med_ativa = b_cand, med
+                        self.bucket = b_cand
+                        self.measurement = med
+                        break
+                if b_ativo is not None:
+                    break
+
+            if b_ativo is not None and med_ativa is not None:
+                blocos = []
+                cur = float(horas_totais)
+                while cur > 1e-6:
+                    nxt = max(0.0, round(cur - float(passo_horas), 6))
+                    blocos.append((round(cur, 6), nxt))
+                    cur = nxt
+
+                dfs_blocos = []
+                for idx, (h_ini, h_fim) in enumerate(blocos, 1):
+                    str_ini = self._formatar_offset(h_ini)
+                    t_ini_expr = f"now() - {str_ini}"
+                    if h_fim > 0:
+                        t_fim_expr = f"now() - {self._formatar_offset(h_fim)}"
+                        cond = f"time >= {t_ini_expr} AND time < {t_fim_expr}"
+                    else:
+                        t_fim_expr = "now()"
+                        cond = f"time >= {t_ini_expr}"
+
+                    if self.query_template:
+                        q_sql = (
+                            self.query_template
+                            .replace("$timeFilter", cond)
+                            .replace("{tempo_inicio}", t_ini_expr)
+                            .replace("{tempo_fim}", t_fim_expr)
+                        )
+                    else:
+                        q_sql = f'SELECT * FROM "{med_ativa}" WHERE {cond} ORDER BY time ASC'
+
+                    df_bloco = self._executar_query_influxql(q_sql, b_ativo)
+                    if not df_bloco.empty:
+                        dfs_blocos.append(df_bloco)
+                    if pausa_bloco_s and pausa_bloco_s > 0 and idx < len(blocos):
+                        time.sleep(pausa_bloco_s)
+
+                if dfs_blocos:
+                    df_out = dfs_blocos[0] if len(dfs_blocos) == 1 else pd.concat(dfs_blocos, ignore_index=True)
+                    if "Time" in df_out.columns:
+                        df_out = df_out.drop_duplicates(subset=["Time"]).sort_values("Time").reset_index(drop=True)
+                    return df_out
+
+        t_inicio = tempo_inicio_str
+        if t_inicio.startswith("-"):
+            t_inicio = f"now() - {t_inicio[1:]}"
 
         for b_cand in buckets_candidatos:
             for med in meds_candidatas:

@@ -16,7 +16,10 @@
   },
 
   "dados_calculo_analises": {
-    "trava_filtro": "0",
+    "trava_filtro": "1",
+    "janela_historico": "24h",
+    "tempo_atualizacao_segundos": 5.0,
+    "velocidade_parada_cph": 1000.0,
     "limiar_buffer_saida_gargalo_pct": 74.37,
     "limiar_buffer_entrada_min_pct": 30.05
   }
